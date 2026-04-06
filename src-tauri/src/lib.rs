@@ -63,7 +63,7 @@ pub fn run() {
 }
 
 async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let aria2_path = resolve_aria2_path(&app_handle);
+    let aria2_path = resolve_aria2_path(&app_handle)?;
     let port = find_available_port();
     let secret: String = uuid::Uuid::new_v4().to_string().replace("-", "");
 

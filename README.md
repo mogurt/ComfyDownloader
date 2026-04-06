@@ -34,12 +34,17 @@ A desktop application for downloading AI models to the correct ComfyUI directori
 # Install dependencies
 npm install
 
+# Manually prepare aria2c again if needed
+npm run prepare:aria2
+
 # Run in development mode (starts both Vite dev server and Tauri)
 npm run tauri dev
 
 # Build for production
 npm run tauri build
 ```
+
+On Windows x64, `npm install` automatically downloads the required `aria2c` sidecar into `src-tauri/binaries/`.
 
 ## Project Structure
 

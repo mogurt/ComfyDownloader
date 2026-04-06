@@ -148,7 +148,7 @@ pub async fn get_active_downloads(
 ) -> Result<Vec<serde_json::Value>, String> {
     let rpc = get_rpc(&rpc_state).await?;
 
-    let all = rpc.poll_all_via_http().await?;
+    let all = rpc.poll_all().await?;
 
     all.into_iter()
         .map(|s| serde_json::to_value(s).map_err(|e| format!("Serialization error: {}", e)))

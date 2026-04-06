@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "prepare:aria2": "node scripts/prepare-aria2.mjs",
+    "postinstall": "node scripts/prepare-aria2.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

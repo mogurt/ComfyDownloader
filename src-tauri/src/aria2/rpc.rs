@@ -254,51 +254,12 @@ impl Aria2Rpc {
         Ok(())
     }
 
-    /// Polls active + waiting downloads via HTTP JSON-RPC (batch request).
-    /// Bypasses the WebSocket connection entirely to avoid contention.
-    pub async fn poll_all_via_http(&self) -> Result<Vec<Aria2Status>, String> {
-        let url = format!("http://127.0.0.1:{}/jsonrpc", self.port);
-        let token = format!("token:{}", self.secret);
+    pub async fn poll_all(&self) -> Result<Vec<Aria2Status>, String> {
+        let (mut active, mut waiting) =
+            tokio::try_join!(self.tell_active(), self.tell_waiting(0, 100))?;
 
-        let batch = json!([
-            {
-                "jsonrpc": "2.0",
-                "id": "poll-active",
-                "method": "aria2.tellActive",
-                "params": [&token],
-            },
-            {
-                "jsonrpc": "2.0",
-                "id": "poll-waiting",
-                "method": "aria2.tellWaiting",
-                "params": [&token, 0, 100],
-            }
-        ]);
-
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(&url)
-            .json(&batch)
-            .timeout(std::time::Duration::from_secs(5))
-            .send()
-            .await
-            .map_err(|e| format!("HTTP poll failed: {}", e))?;
-
-        let body: Vec<Value> = resp
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse poll response: {}", e))?;
-
-        let mut all: Vec<Aria2Status> = Vec::new();
-        for entry in &body {
-            if let Some(result) = entry.get("result") {
-                if let Ok(list) = serde_json::from_value::<Vec<Aria2Status>>(result.clone()) {
-                    all.extend(list);
-                }
-            }
-        }
-
-        Ok(all)
+        active.append(&mut waiting);
+        Ok(active)
     }
 }
 
