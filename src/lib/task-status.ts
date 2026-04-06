@@ -4,12 +4,13 @@ import {
   CheckCircle2,
   CircleDashed,
   Clock3,
+  HardDriveDownload,
   PauseCircle,
   Play,
   SkipForward,
 } from "lucide-react";
 
-import type { TaskStatus } from "@/lib/types";
+import type { DisplayTaskStatus, DownloadTask } from "@/lib/types";
 import type { TranslationKey } from "@/lib/i18n";
 
 type StatusMeta = {
@@ -19,9 +20,10 @@ type StatusMeta = {
   chipClass: string;
 };
 
-const STATUS_LABEL_KEYS: Record<TaskStatus, TranslationKey> = {
+const STATUS_LABEL_KEYS: Record<DisplayTaskStatus, TranslationKey> = {
   pending: "status.pending",
   queued: "status.queued",
+  allocating: "status.allocating",
   downloading: "status.downloading",
   paused: "status.paused",
   completed: "status.completed",
@@ -31,7 +33,7 @@ const STATUS_LABEL_KEYS: Record<TaskStatus, TranslationKey> = {
 
 export function getTaskStatusMeta(
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
-): Record<TaskStatus, StatusMeta> {
+): Record<DisplayTaskStatus, StatusMeta> {
   return {
     pending: {
       label: t(STATUS_LABEL_KEYS.pending),
@@ -46,6 +48,13 @@ export function getTaskStatusMeta(
       textClass: "text-[var(--status-queued-fg)]",
       chipClass:
         "border-[var(--status-queued-border)] bg-[var(--status-queued-bg)] text-[var(--status-queued-fg)]",
+    },
+    allocating: {
+      label: t(STATUS_LABEL_KEYS.allocating),
+      icon: HardDriveDownload,
+      textClass: "text-[var(--status-allocating-fg)]",
+      chipClass:
+        "border-[var(--status-allocating-border)] bg-[var(--status-allocating-bg)] text-[var(--status-allocating-fg)]",
     },
     downloading: {
       label: t(STATUS_LABEL_KEYS.downloading),
@@ -83,4 +92,18 @@ export function getTaskStatusMeta(
         "border-[var(--status-skipped-border)] bg-[var(--status-skipped-bg)] text-[var(--status-skipped-fg)]",
     },
   };
+}
+
+export function getDisplayTaskStatus(task: Pick<DownloadTask, "status" | "runtime_phase">): DisplayTaskStatus {
+  if (task.runtime_phase === "allocating" && (task.status === "queued" || task.status === "downloading")) {
+    return "allocating";
+  }
+  return task.status;
+}
+
+export function getTaskVisualProgress(task: Pick<DownloadTask, "progress" | "runtime_phase" | "allocation_progress">): number {
+  if (task.runtime_phase === "allocating" && typeof task.allocation_progress === "number") {
+    return Math.min(100, Math.max(0, task.allocation_progress));
+  }
+  return task.progress;
 }

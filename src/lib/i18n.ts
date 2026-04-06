@@ -131,6 +131,7 @@ const translations = {
     "taskItem.cancel": "Cancel",
     "taskItem.openDirectory": "Open download directory",
     "taskItem.deleteRecord": "Delete record",
+    "taskItem.allocating": "Allocating file space {{progress}}%",
 
     "taskDetail.title": "Task Details",
     "taskDetail.downloaded": "Downloaded",
@@ -154,6 +155,7 @@ const translations = {
     "taskDetail.error": "Error",
     "taskDetail.integrity": "Integrity",
     "taskDetail.openDirectory": "Open directory",
+    "taskDetail.allocating": "Allocating file space {{progress}}%",
 
     "logs.title": "Logs",
     "logs.entries": "{{count}} entries",
@@ -186,6 +188,7 @@ const translations = {
 
     "status.pending": "Pending",
     "status.queued": "Queued",
+    "status.allocating": "Allocating",
     "status.downloading": "Downloading",
     "status.paused": "Paused",
     "status.completed": "Completed",
@@ -338,6 +341,7 @@ const translations = {
     "taskItem.cancel": "取消",
     "taskItem.openDirectory": "打开下载目录",
     "taskItem.deleteRecord": "删除记录",
+    "taskItem.allocating": "正在预分配文件空间 {{progress}}%",
 
     "taskDetail.title": "任务详情",
     "taskDetail.downloaded": "已下载",
@@ -361,6 +365,7 @@ const translations = {
     "taskDetail.error": "错误",
     "taskDetail.integrity": "完整性",
     "taskDetail.openDirectory": "打开目录",
+    "taskDetail.allocating": "正在预分配文件空间 {{progress}}%",
 
     "logs.title": "日志",
     "logs.entries": "{{count}} 条",
@@ -393,6 +398,7 @@ const translations = {
 
     "status.pending": "待开始",
     "status.queued": "排队中",
+    "status.allocating": "预分配中",
     "status.downloading": "下载中",
     "status.paused": "已暂停",
     "status.completed": "已完成",

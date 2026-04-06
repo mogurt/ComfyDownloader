@@ -19,7 +19,11 @@ import {
   formatTransferred,
 } from "@/lib/download-format";
 import { useI18n } from "@/lib/i18n";
-import { getTaskStatusMeta } from "@/lib/task-status";
+import {
+  getDisplayTaskStatus,
+  getTaskStatusMeta,
+  getTaskVisualProgress,
+} from "@/lib/task-status";
 
 interface Props {
   task: DownloadTask;
@@ -37,10 +41,12 @@ export default function TaskItem({
   const { t } = useI18n();
   const { pauseTask, resumeTask, cancelTask, retryTask, deleteTask, setSelectedTask } =
     useTaskStore();
-  const statusMeta = getTaskStatusMeta(t)[task.status];
+  const displayStatus = getDisplayTaskStatus(task);
+  const statusMeta = getTaskStatusMeta(t)[displayStatus];
   const StatusIcon = statusMeta.icon;
+  const visualProgress = getTaskVisualProgress(task);
   const remainingBytes = Math.max(0, (task.file_size ?? 0) - (task.downloaded_size ?? 0));
-  const eta = task.status === "downloading" && task.speed > 0 && task.file_size
+  const eta = displayStatus === "downloading" && task.speed > 0 && task.file_size
     ? remainingBytes / task.speed
     : null;
 
@@ -86,7 +92,12 @@ export default function TaskItem({
           <span>{task.source}</span>
           <span>{task.model_type}</span>
           <span>{formatTransferred(task.downloaded_size, task.file_size)}</span>
-          {task.status === "downloading" && (
+          {displayStatus === "allocating" && (
+            <span className={cn("font-medium", statusMeta.textClass)}>
+              {t("taskItem.allocating", { progress: Math.round(visualProgress) })}
+            </span>
+          )}
+          {displayStatus === "downloading" && (
             <span className={cn("font-medium", statusMeta.textClass)}>
               {formatSpeed(task.speed)}
               {eta != null ? ` · ETA ${formatEta(eta)}` : ""}
@@ -96,7 +107,7 @@ export default function TaskItem({
         {(task.status === "queued" ||
           task.status === "downloading" ||
           task.status === "paused") && (
-          <Progress value={task.progress} className="mt-2 h-1.5" />
+          <Progress value={visualProgress} className="mt-2 h-1.5" />
         )}
         {task.error_msg && task.status === "failed" && (
           <p className="mt-1 truncate text-xs text-destructive">

@@ -18,7 +18,11 @@ import {
   formatTransferred,
 } from "@/lib/download-format";
 import { useI18n } from "@/lib/i18n";
-import { getTaskStatusMeta } from "@/lib/task-status";
+import {
+  getDisplayTaskStatus,
+  getTaskStatusMeta,
+  getTaskVisualProgress,
+} from "@/lib/task-status";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -31,11 +35,13 @@ export default function TaskDetail() {
   const { tasks, selectedTaskId, setSelectedTask, getTaskLogs } = useTaskStore();
   const task = tasks.find((t) => t.id === selectedTaskId);
   const taskLogs = task ? getTaskLogs(task.id, task.gid).slice(-50) : [];
-  const statusMeta = task ? getTaskStatusMeta(t)[task.status] : null;
+  const displayStatus = task ? getDisplayTaskStatus(task) : null;
+  const statusMeta = displayStatus ? getTaskStatusMeta(t)[displayStatus] : null;
+  const visualProgress = task ? getTaskVisualProgress(task) : 0;
   const remainingBytes = task
     ? Math.max(0, (task.file_size ?? 0) - (task.downloaded_size ?? 0))
     : null;
-  const etaSeconds = task && task.speed > 0 && remainingBytes != null
+  const etaSeconds = task && displayStatus === "downloading" && task.speed > 0 && remainingBytes != null
     ? remainingBytes / task.speed
     : null;
 
@@ -57,7 +63,12 @@ export default function TaskDetail() {
                   {statusMeta.label}
                 </Badge>
                 <StatChip icon={Zap} label={formatSpeed(task.speed)} />
-                <StatChip icon={Timer} label={`${t("common.eta")} ${formatEta(etaSeconds)}`} />
+                <StatChip
+                  icon={displayStatus === "allocating" ? statusMeta.icon : Timer}
+                  label={displayStatus === "allocating"
+                    ? t("taskDetail.allocating", { progress: Math.round(visualProgress) })
+                    : `${t("common.eta")} ${formatEta(etaSeconds)}`}
+                />
               </div>
             )}
           </div>
@@ -68,7 +79,7 @@ export default function TaskDetail() {
               <div className="grid grid-cols-2 gap-3">
                 <MetricCard label={t("taskDetail.downloaded")} value={formatTransferred(task.downloaded_size, task.file_size)} />
                 <MetricCard label={t("taskDetail.remaining")} value={formatSize(remainingBytes)} />
-                <MetricCard label={t("taskDetail.progress")} value={`${task.progress.toFixed(1)}%`} />
+                <MetricCard label={t("taskDetail.progress")} value={`${visualProgress.toFixed(1)}%`} />
                 <MetricCard label={t("taskDetail.lastActive")} value={formatDateTime(task.last_active_at)} />
               </div>
 

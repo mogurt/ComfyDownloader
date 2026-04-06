@@ -29,6 +29,8 @@ export interface DownloadTask {
   file_size: number | null;
   downloaded_size?: number | null;
   last_active_at?: string | null;
+  runtime_phase?: RuntimeTaskPhase | null;
+  allocation_progress?: number | null;
   status: TaskStatus;
   progress: number;
   speed: number;
@@ -46,6 +48,10 @@ export type TaskStatus =
   | "completed"
   | "failed"
   | "skipped";
+
+export type RuntimeTaskPhase = "allocating";
+
+export type DisplayTaskStatus = TaskStatus | RuntimeTaskPhase;
 
 export interface DirMapping {
   model_type: string;

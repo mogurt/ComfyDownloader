@@ -35,6 +35,13 @@ function extractGidFromMessage(message: string): string | null {
   return match?.[1] ?? null;
 }
 
+function matchesTaskGid(taskGid: string | null | undefined, reportedGid: string): boolean {
+  if (!taskGid) return false;
+  const normalizedTaskGid = taskGid.toLowerCase();
+  const normalizedReportedGid = reportedGid.toLowerCase();
+  return normalizedTaskGid === normalizedReportedGid || normalizedTaskGid.startsWith(normalizedReportedGid);
+}
+
 async function getDb(): Promise<Database> {
   if (!db) {
     db = await Database.load("sqlite:comfy_downloader.db");
@@ -76,6 +83,7 @@ interface TaskState {
   addTask: (task: Omit<DownloadTask, "id" | "created_at" | "completed_at">) => Promise<number | undefined>;
   updateTaskStatus: (id: number, status: TaskStatus, extra?: Partial<DownloadTask>) => Promise<void>;
   updateTaskByGid: (gid: string, updates: Partial<DownloadTask>) => void;
+  setTaskAllocationProgress: (gid: string, progress: number) => void;
   deleteTask: (id: number) => Promise<void>;
   clearAllTasks: () => Promise<void>;
 
@@ -196,6 +204,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       tasks: rows.map((row) => ({
         downloaded_size: row.downloaded_size ?? 0,
         last_active_at: row.last_active_at ?? null,
+        runtime_phase: null,
+        allocation_progress: null,
         ...row,
       })),
     });
@@ -234,6 +244,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       completed_at: null,
       downloaded_size: task.downloaded_size ?? 0,
       last_active_at: task.last_active_at ?? null,
+      runtime_phase: task.runtime_phase ?? null,
+      allocation_progress: task.allocation_progress ?? null,
       ...task,
     };
     set((s) => ({ tasks: [createdTask, ...s.tasks] }));
@@ -275,9 +287,25 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     await database.execute(sql, params);
 
+    const runtimeReset =
+      status === "pending"
+      || status === "paused"
+      || status === "completed"
+      || status === "failed"
+      || status === "skipped";
+
     set((s) => ({
       tasks: s.tasks.map((t) =>
-        t.id === id ? { ...t, status, ...extra } : t
+        t.id === id
+          ? {
+            ...t,
+            status,
+            ...(runtimeReset && extra.runtime_phase === undefined
+              ? { runtime_phase: null, allocation_progress: null }
+              : {}),
+            ...extra,
+          }
+          : t
       ),
     }));
   },
@@ -286,6 +314,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set((s) => ({
       tasks: s.tasks.map((t) =>
         t.gid === gid ? { ...t, ...updates } : t
+      ),
+    }));
+  },
+
+  setTaskAllocationProgress: (gid, progress) => {
+    const clampedProgress = Math.min(100, Math.max(0, progress));
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        matchesTaskGid(t.gid, gid) && (t.status === "queued" || t.status === "downloading")
+          ? {
+            ...t,
+            status: (t.downloaded_size ?? 0) > 0 ? t.status : "queued",
+            speed: 0,
+            runtime_phase: "allocating",
+            allocation_progress: clampedProgress,
+          }
+          : t
       ),
     }));
   },
@@ -320,6 +365,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         gid,
         error_msg: null,
         speed: 0,
+        runtime_phase: null,
+        allocation_progress: null,
       });
       store.addTaskLog("info", translate("log.startedDownload", { filename: task.filename }), {
         taskId: task.id,
@@ -429,6 +476,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       progress: 0,
       speed: 0,
       downloaded_size: 0,
+      runtime_phase: null,
+      allocation_progress: null,
     });
     const updatedTask = store.tasks.find((t) => t.id === task.id);
     if (updatedTask) {
@@ -515,6 +564,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       await get().updateTaskStatus(task.id, "completed", {
         downloaded_size: task.file_size ?? task.downloaded_size ?? 0,
         speed: 0,
+        runtime_phase: null,
+        allocation_progress: null,
       });
       get().addTaskLog("info", translate("log.completed", { filename: task.filename }), {
         taskId: task.id,
@@ -573,6 +624,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           const speed = parseInt(String(status.downloadSpeed ?? "0"), 10);
           const progress = total > 0 ? (completed / total) * 100 : 0;
           const aria2Status = String(status.status ?? "");
+          const hasTransferStarted = completed > 0 || speed > 0;
           const lastActiveAt = completed > (task.downloaded_size ?? 0) || speed > 0
             ? new Date().toISOString()
             : task.last_active_at ?? null;
@@ -583,9 +635,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             downloaded_size: completed,
             file_size: total || task.file_size,
             last_active_at: lastActiveAt,
+            ...(hasTransferStarted || aria2Status === "complete" || aria2Status === "error" || aria2Status === "paused"
+              ? { runtime_phase: null, allocation_progress: null }
+              : {}),
           });
 
-          if (aria2Status === "active" && task.status !== "downloading") {
+          if (aria2Status === "active" && task.status !== "downloading" && (!task.runtime_phase || hasTransferStarted)) {
             await get().updateTaskStatus(task.id, "downloading");
           } else if (aria2Status === "waiting" && task.status !== "queued") {
             await get().updateTaskStatus(task.id, "queued", { speed: 0 });

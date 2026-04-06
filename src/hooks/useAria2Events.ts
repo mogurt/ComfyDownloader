@@ -4,6 +4,18 @@ import { useTaskStore } from "@/stores/taskStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { translate } from "@/lib/i18n";
 
+function parseAllocationProgress(message: string): Array<{ gid: string; progress: number }> {
+  const matches = message.matchAll(/FileAlloc:#([0-9a-f]{6,16})[^\]]*\((\d+)%\)/gi);
+  const latestByGid = new Map<string, number>();
+  for (const match of matches) {
+    const gid = match[1];
+    const progress = Number.parseInt(match[2], 10);
+    if (!gid || Number.isNaN(progress)) continue;
+    latestByGid.set(gid, progress);
+  }
+  return Array.from(latestByGid, ([gid, progress]) => ({ gid, progress }));
+}
+
 export function useAria2Events() {
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const unlistenRef = useRef<UnlistenFn[]>([]);
@@ -75,10 +87,14 @@ export function useAria2Events() {
           const message = payload.message?.trim();
           if (!message) return;
           const level = payload.level ?? "info";
-          useTaskStore.getState().addTaskLog(
+          const store = useTaskStore.getState();
+          store.addTaskLog(
             level,
             `[aria2 ${payload.stream ?? "log"}] ${message}`
           );
+          for (const match of parseAllocationProgress(message)) {
+            store.setTaskAllocationProgress(match.gid, match.progress);
+          }
         })
       );
 
