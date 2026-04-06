@@ -32,6 +32,17 @@ export default function App() {
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const preventContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    document.addEventListener("contextmenu", preventContextMenu);
+    return () => {
+      document.removeEventListener("contextmenu", preventContextMenu);
+    };
+  }, []);
+
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col bg-background text-foreground">

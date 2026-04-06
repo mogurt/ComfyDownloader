@@ -58,6 +58,8 @@ pub struct Aria2Rpc {
     tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
     pending: PendingRequests,
     request_id: Arc<Mutex<u64>>,
+    app_handle: Arc<Mutex<Option<AppHandle>>>,
+    connect_lock: Arc<Mutex<()>>,
 }
 
 impl Aria2Rpc {
@@ -68,10 +70,28 @@ impl Aria2Rpc {
             tx: Arc::new(Mutex::new(None)),
             pending: Arc::new(Mutex::new(HashMap::new())),
             request_id: Arc::new(Mutex::new(0)),
+            app_handle: Arc::new(Mutex::new(None)),
+            connect_lock: Arc::new(Mutex::new(())),
         }
     }
 
     pub async fn connect(&self, app_handle: AppHandle) -> Result<(), String> {
+        {
+            let mut guard = self.app_handle.lock().await;
+            *guard = Some(app_handle.clone());
+        }
+        self.connect_socket(app_handle).await
+    }
+
+    async fn connect_socket(&self, app_handle: AppHandle) -> Result<(), String> {
+        let _connect_guard = self.connect_lock.lock().await;
+        {
+            let guard = self.tx.lock().await;
+            if guard.is_some() {
+                return Ok(());
+            }
+        }
+
         let url = format!("ws://127.0.0.1:{}/jsonrpc", self.port);
         info!("Connecting to aria2 RPC at {}", url);
 
@@ -87,13 +107,16 @@ impl Aria2Rpc {
             *guard = Some(tx);
         }
 
+        let rpc_for_writer = self.clone();
         let pending = self.pending.clone();
         let app = app_handle.clone();
+        let rpc_for_reader = self.clone();
 
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
                 if let Err(e) = write.send(Message::Text(msg.into())).await {
                     error!("Failed to send to aria2: {}", e);
+                    rpc_for_writer.clear_connection().await;
                     break;
                 }
             }
@@ -116,10 +139,40 @@ impl Aria2Rpc {
                 }
             }
             warn!("aria2 WebSocket connection closed");
+            rpc_for_reader.clear_connection().await;
         });
 
         info!("Connected to aria2 RPC");
         Ok(())
+    }
+
+    async fn clear_connection(&self) {
+        {
+            let mut guard = self.tx.lock().await;
+            *guard = None;
+        }
+
+        let mut pending = self.pending.lock().await;
+        pending.clear();
+    }
+
+    async fn ensure_connected(&self) -> Result<(), String> {
+        {
+            let guard = self.tx.lock().await;
+            if guard.is_some() {
+                return Ok(());
+            }
+        }
+
+        let app_handle = {
+            let guard = self.app_handle.lock().await;
+            guard
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| "aria2 app handle is unavailable".to_string())?
+        };
+
+        self.connect_socket(app_handle).await
     }
 
     async fn next_id(&self) -> String {
@@ -129,6 +182,8 @@ impl Aria2Rpc {
     }
 
     async fn call(&self, method: &str, params: Vec<Value>) -> Result<Value, String> {
+        self.ensure_connected().await?;
+
         let id = self.next_id().await;
         let mut full_params = vec![json!(format!("token:{}", self.secret))];
         full_params.extend(params);
@@ -146,20 +201,22 @@ impl Aria2Rpc {
             guard.insert(id.clone(), resp_tx);
         }
 
-        {
+        let sender = {
             let guard = self.tx.lock().await;
-            if let Some(ref tx) = *guard {
-                tx.send(request.to_string())
-                    .await
-                    .map_err(|e| format!("Failed to send RPC request: {}", e))?;
-            } else {
-                let mut guard = self.pending.lock().await;
-                guard.remove(&id);
-                return Err("Not connected to aria2".to_string());
+            guard.clone()
+        };
+        if let Some(tx) = sender {
+            if let Err(e) = tx.send(request.to_string()).await {
+                self.clear_connection().await;
+                return Err(format!("Failed to send RPC request: {}", e));
             }
+        } else {
+            let mut guard = self.pending.lock().await;
+            guard.remove(&id);
+            return Err("Not connected to aria2".to_string());
         }
 
-        let result = tokio::time::timeout(tokio::time::Duration::from_secs(8), resp_rx).await;
+        let result = tokio::time::timeout(tokio::time::Duration::from_secs(15), resp_rx).await;
 
         match result {
             Ok(Ok(response)) => {
@@ -171,11 +228,13 @@ impl Aria2Rpc {
             Ok(Err(_)) => {
                 let mut guard = self.pending.lock().await;
                 guard.remove(&id);
+                self.clear_connection().await;
                 Err("RPC response channel closed".to_string())
             }
             Err(_) => {
                 let mut guard = self.pending.lock().await;
                 guard.remove(&id);
+                self.clear_connection().await;
                 Err("RPC request timed out".to_string())
             }
         }

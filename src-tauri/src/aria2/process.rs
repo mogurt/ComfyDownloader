@@ -1,7 +1,10 @@
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use log::{info, warn};
@@ -46,7 +49,7 @@ impl Aria2Process {
         &self.secret
     }
 
-    pub async fn start(&self) -> Result<(), String> {
+    pub async fn start(&self, app_handle: &AppHandle) -> Result<(), String> {
         let mut args = vec![
             "--enable-rpc".to_string(),
             format!("--rpc-listen-port={}", self.port),
@@ -54,8 +57,9 @@ impl Aria2Process {
             "--rpc-allow-origin-all=true".to_string(),
             "--auto-file-renaming=false".to_string(),
             "--allow-overwrite=false".to_string(),
-            "--summary-interval=0".to_string(),
-            "--console-log-level=warn".to_string(),
+            "--enable-color=false".to_string(),
+            "--summary-interval=5".to_string(),
+            "--console-log-level=notice".to_string(),
             format!("--max-concurrent-downloads={}", self.max_concurrent),
             format!("--max-connection-per-server={}", self.max_connections),
             "--continue=true".to_string(),
@@ -72,13 +76,20 @@ impl Aria2Process {
 
         info!("Starting aria2c at {}:{}", self.aria2_path.display(), self.port);
 
-        let child = Command::new(&self.aria2_path)
+        let mut child = Command::new(&self.aria2_path)
             .args(&args)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| format!("Failed to start aria2c: {}", e))?;
+
+        if let Some(stdout) = child.stdout.take() {
+            spawn_aria2_output_reader(app_handle.clone(), stdout, "stdout");
+        }
+        if let Some(stderr) = child.stderr.take() {
+            spawn_aria2_output_reader(app_handle.clone(), stderr, "stderr");
+        }
 
         let mut guard = self.child.lock().await;
         *guard = Some(child);
@@ -111,7 +122,7 @@ impl Aria2Process {
         }
     }
 
-    pub async fn ensure_running(&self) -> Result<(), String> {
+    pub async fn ensure_running(&self, app_handle: &AppHandle) -> Result<(), String> {
         if !self.is_running().await {
             let mut count = self.restart_count.lock().await;
             if *count >= 3 {
@@ -120,7 +131,7 @@ impl Aria2Process {
             warn!("aria2c is not running, restarting (attempt {})", *count + 1);
             *count += 1;
             drop(count);
-            self.start().await?;
+            self.start(app_handle).await?;
         }
         Ok(())
     }
@@ -133,6 +144,40 @@ impl Aria2Process {
         self.max_concurrent = max_concurrent;
         self.max_connections = max_connections;
     }
+}
+
+fn spawn_aria2_output_reader<T>(app_handle: AppHandle, reader: T, stream: &'static str)
+where
+    T: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            let lowered = line.to_ascii_lowercase();
+            let level = if lowered.contains("error") {
+                "error"
+            } else if lowered.contains("warn") {
+                "warn"
+            } else {
+                "info"
+            };
+
+            info!("aria2[{}] {}", stream, line);
+            let _ = app_handle.emit(
+                "aria2://log",
+                serde_json::json!({
+                    "level": level,
+                    "stream": stream,
+                    "message": line,
+                }),
+            );
+        }
+    });
 }
 
 pub fn find_available_port() -> u16 {
@@ -185,6 +230,8 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
                 fs::create_dir_all(&runtime_dir)
                     .map_err(|e| format!("Failed to create aria2 runtime dir: {}", e))?;
 
+                cleanup_stale_runtime_binaries(&runtime_dir);
+
                 let runtime_path = runtime_dir.join(format!(
                     "aria2c-runtime-{}{}",
                     std::process::id(),
@@ -200,6 +247,58 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
     }
 
     Ok(PathBuf::from(exe_name))
+}
+
+fn cleanup_stale_runtime_binaries(runtime_dir: &std::path::Path) {
+    let entries = match fs::read_dir(runtime_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            warn!(
+                "Failed to read aria2 runtime dir {}: {}",
+                runtime_dir.display(),
+                e
+            );
+            return;
+        }
+    };
+
+    let current_name = format!(
+        "aria2c-runtime-{}{}",
+        std::process::id(),
+        if cfg!(target_os = "windows") { ".exe" } else { "" }
+    );
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+
+        if !file_name.starts_with("aria2c-runtime-") || file_name == current_name {
+            continue;
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/IM", file_name])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+
+        if let Err(e) = fs::remove_file(&path) {
+            if e.kind() != ErrorKind::NotFound {
+                warn!(
+                    "Failed to remove stale aria2 runtime {}: {}",
+                    path.display(),
+                    e
+                );
+            }
+        } else {
+            info!("Removed stale aria2 runtime {}", path.display());
+        }
+    }
 }
 
 use tauri::Manager;

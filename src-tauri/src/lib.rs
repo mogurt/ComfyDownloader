@@ -10,12 +10,14 @@ use commands::download::Aria2RpcState;
 use db::migrations::get_migrations;
 use log::{error, info};
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, RunEvent};
 use tokio::sync::Mutex;
+
+type Aria2ProcessState = Arc<Mutex<Option<Arc<Aria2Process>>>>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
@@ -29,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(Mutex::new(None::<Aria2Rpc>)) as Aria2RpcState)
+        .manage(Arc::new(Mutex::new(None::<Arc<Aria2Process>>)) as Aria2ProcessState)
         .setup(|app| {
             let app_handle = app.handle().clone();
 
@@ -58,8 +61,32 @@ pub fn run() {
             commands::comfyui::check_comfyui_status,
             commands::comfyui::verify_model_in_comfyui,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
+            tauri::async_runtime::block_on(async {
+                let rpc_state: tauri::State<'_, Aria2RpcState> = app_handle.state();
+                let rpc = {
+                    let guard = rpc_state.lock().await;
+                    guard.as_ref().cloned()
+                };
+                if let Some(rpc) = rpc {
+                    let _ = rpc.shutdown().await;
+                }
+
+                let process_state: tauri::State<'_, Aria2ProcessState> = app_handle.state();
+                let process = {
+                    let guard = process_state.lock().await;
+                    guard.as_ref().cloned()
+                };
+                if let Some(process) = process {
+                    let _ = process.stop().await;
+                }
+            });
+        }
+    });
 }
 
 async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -71,8 +98,14 @@ async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
         "Setting up aria2: path={}, port={}", aria2_path.display(), port
     );
 
-    let process = Aria2Process::new(aria2_path, port, secret.clone(), 3, 16, None);
-    process.start().await?;
+    let process = Arc::new(Aria2Process::new(aria2_path, port, secret.clone(), 3, 16, None));
+    process.start(&app_handle).await?;
+
+    let process_state: tauri::State<'_, Aria2ProcessState> = app_handle.state();
+    {
+        let mut guard = process_state.lock().await;
+        *guard = Some(process.clone());
+    }
 
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
@@ -90,7 +123,7 @@ async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
         loop {
             interval.tick().await;
-            if let Err(e) = process.ensure_running().await {
+            if let Err(e) = process.ensure_running(&app_for_monitor).await {
                 error!("aria2 monitor error: {}", e);
                 let _ = app_for_monitor.emit("aria2://error", serde_json::json!({ "error": e }));
                 break;

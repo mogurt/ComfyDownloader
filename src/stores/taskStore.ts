@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DownloadTask, LogEntry, TaskStatus } from "@/lib/types";
+import type { Aria2Status, DownloadTask, LogEntry, TaskStatus } from "@/lib/types";
 import Database from "@tauri-apps/plugin-sql";
 import * as api from "@/lib/api";
 
@@ -38,6 +38,7 @@ interface TaskState {
   cancelTask: (task: DownloadTask) => Promise<void>;
   retryTask: (task: DownloadTask) => Promise<void>;
 
+  handleGidStarted: (gid: string) => Promise<void>;
   handleGidComplete: (gid: string) => Promise<void>;
   handleGidError: (gid: string) => Promise<void>;
   handleGidPause: (gid: string) => Promise<void>;
@@ -77,13 +78,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const rows = await database.select<DownloadTask[]>(
       "SELECT * FROM downloads ORDER BY created_at DESC"
     );
-    set({ tasks: rows });
+    set({
+      tasks: rows.map((row) => ({
+        downloaded_size: row.downloaded_size ?? 0,
+        ...row,
+      })),
+    });
   },
 
   resetStaleTasks: async () => {
     const database = await getDb();
     await database.execute(
-      "UPDATE downloads SET status='paused', speed=0 WHERE status='downloading'"
+      "UPDATE downloads SET status='paused', speed=0 WHERE status IN ('downloading', 'queued')"
     );
   },
 
@@ -106,8 +112,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         task.hash,
       ]
     );
-    await get().loadTasks();
-    return result.lastInsertId;
+    const id = Number(result.lastInsertId);
+    const createdTask: DownloadTask = {
+      id,
+      created_at: new Date().toISOString(),
+      completed_at: null,
+      downloaded_size: task.downloaded_size ?? 0,
+      ...task,
+    };
+    set((s) => ({ tasks: [createdTask, ...s.tasks] }));
+    return id;
   },
 
   updateTaskStatus: async (id, status, extra = {}) => {
@@ -182,7 +196,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         task.filename,
         headers.length > 0 ? headers : undefined
       );
-      await store.updateTaskStatus(task.id, "downloading", { gid });
+      await store.updateTaskStatus(task.id, "queued", {
+        gid,
+        error_msg: null,
+        speed: 0,
+      });
       store.addLog("info", `Started download: ${task.filename}`);
     } catch (e) {
       await store.updateTaskStatus(task.id, "failed", {
@@ -214,7 +232,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       if (gid) {
         await api.resumeDownload(gid);
-        await get().updateTaskStatus(current.id, "downloading");
+        await get().updateTaskStatus(current.id, "downloading", { speed: 0 });
         get().addLog("info", `Resumed: ${current.filename}`);
       } else {
         await get().startDownload(current);
@@ -253,6 +271,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       error_msg: null,
       progress: 0,
       speed: 0,
+      downloaded_size: 0,
     });
     const updatedTask = store.tasks.find((t) => t.id === task.id);
     if (updatedTask) {
@@ -260,10 +279,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
+  handleGidStarted: async (gid) => {
+    const task = get().tasks.find((t) => t.gid === gid);
+    if (task && task.status !== "downloading") {
+      await get().updateTaskStatus(task.id, "downloading");
+    }
+  },
+
   handleGidComplete: async (gid) => {
     const task = get().tasks.find((t) => t.gid === gid);
     if (task && task.status !== "completed") {
-      await get().updateTaskStatus(task.id, "completed");
+      await get().updateTaskStatus(task.id, "completed", {
+        downloaded_size: task.file_size ?? task.downloaded_size ?? 0,
+        speed: 0,
+      });
       get().addLog("info", `Completed: ${task.filename}`);
     }
   },
@@ -272,9 +301,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const task = get().tasks.find((t) => t.gid === gid);
     if (task && task.status !== "failed") {
       try {
-        const raw = await api.getDownloadStatus(gid);
-        const s = raw as Record<string, unknown>;
-        const errMsg = String(s.errorMessage ?? "Unknown error");
+        const status = await api.getDownloadStatus(gid);
+        const errMsg = String(status.errorMessage ?? "Unknown error");
         await get().updateTaskStatus(task.id, "failed", { error_msg: errMsg });
       } catch {
         await get().updateTaskStatus(task.id, "failed", { error_msg: "Download failed" });
@@ -285,28 +313,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   handleGidPause: async (gid) => {
     const task = get().tasks.find((t) => t.gid === gid);
-    if (task && task.status === "downloading") {
+    if (task && (task.status === "downloading" || task.status === "queued")) {
       await get().updateTaskStatus(task.id, "paused", { speed: 0 });
     }
   },
 
   pollActiveDownloads: async () => {
     const { tasks } = get();
-    const downloadingTasks = tasks.filter(
-      (t) => t.status === "downloading" && t.gid
+    const trackedTasks = tasks.filter(
+      (t) => (t.status === "downloading" || t.status === "queued") && t.gid
     );
-    if (downloadingTasks.length === 0) return;
+    if (trackedTasks.length === 0) return;
 
     try {
       const allDownloads = await api.getActiveDownloads();
-      const statusMap = new Map<string, Record<string, unknown>>();
-      for (const dl of allDownloads) {
-        const s = dl as Record<string, unknown>;
-        const gid = String(s.gid ?? "");
-        if (gid) statusMap.set(gid, s);
+      const statusMap = new Map<string, Aria2Status>();
+      for (const status of allDownloads) {
+        if (status.gid) statusMap.set(status.gid, status);
       }
 
-      for (const task of downloadingTasks) {
+      for (const task of trackedTasks) {
         const status = statusMap.get(task.gid);
         if (status) {
           const total = parseInt(String(status.totalLength ?? "0"), 10);
@@ -318,11 +344,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           get().updateTaskByGid(task.gid, {
             progress,
             speed,
+            downloaded_size: completed,
             file_size: total || task.file_size,
           });
 
-          if (aria2Status === "complete") {
-            await get().updateTaskStatus(task.id, "completed");
+          if (aria2Status === "active" && task.status !== "downloading") {
+            await get().updateTaskStatus(task.id, "downloading");
+          } else if (aria2Status === "waiting" && task.status !== "queued") {
+            await get().updateTaskStatus(task.id, "queued", { speed: 0 });
+          } else if (aria2Status === "complete") {
+            await get().updateTaskStatus(task.id, "completed", {
+              downloaded_size: total,
+              speed: 0,
+            });
             get().addLog("info", `Completed: ${task.filename}`);
           } else if (aria2Status === "error") {
             const errMsg = String(status.errorMessage ?? "Unknown error");

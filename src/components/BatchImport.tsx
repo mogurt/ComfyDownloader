@@ -94,7 +94,7 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
           url,
           filename: result.filename,
           source: result.source,
-          model_type: matchedSubdir,
+          model_type: matchedSubdir || "custom",
           target_dir: targetDir,
           file_size: result.file_size,
           status: "pending",

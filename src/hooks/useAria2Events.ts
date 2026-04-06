@@ -49,6 +49,7 @@ export function useAria2Events() {
         await listen("aria2://download-started", (event) => {
           if (cancelled) return;
           const payload = event.payload as { gid: string };
+          useTaskStore.getState().handleGidStarted(payload.gid);
           useTaskStore.getState().addLog("info", `Download started: ${payload.gid}`);
         })
       );
@@ -58,6 +59,21 @@ export function useAria2Events() {
           if (cancelled) return;
           const payload = event.payload as { error: string };
           useTaskStore.getState().addLog("error", `aria2 error: ${payload.error}`);
+        })
+      );
+
+      fns.push(
+        await listen("aria2://log", (event) => {
+          if (cancelled) return;
+          const payload = event.payload as {
+            level?: "info" | "warn" | "error";
+            message?: string;
+            stream?: string;
+          };
+          const message = payload.message?.trim();
+          if (!message) return;
+          const level = payload.level ?? "info";
+          useTaskStore.getState().addLog(level, `[aria2 ${payload.stream ?? "log"}] ${message}`);
         })
       );
 

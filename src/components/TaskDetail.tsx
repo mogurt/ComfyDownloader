@@ -20,6 +20,14 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+function formatTransferred(downloaded: number | null | undefined, total: number | null): string {
+  if (!downloaded && !total) return "-";
+  if (total && total > 0) {
+    return `${formatSize(downloaded ?? 0)} / ${formatSize(total)}`;
+  }
+  return formatSize(downloaded ?? 0);
+}
+
 export default function TaskDetail() {
   const { tasks, selectedTaskId, setSelectedTask } = useTaskStore();
   const task = tasks.find((t) => t.id === selectedTaskId);
@@ -74,6 +82,9 @@ export default function TaskDetail() {
                 </div>
               </DetailRow>
               <DetailRow label="File Size">{formatSize(task.file_size)}</DetailRow>
+              <DetailRow label="Downloaded">
+                {formatTransferred(task.downloaded_size, task.file_size)}
+              </DetailRow>
 
               <Separator />
 

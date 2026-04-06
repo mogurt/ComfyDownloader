@@ -27,6 +27,7 @@ const statusVariant: Record<
   "default" | "secondary" | "destructive" | "outline"
 > = {
   pending: "outline",
+  queued: "secondary",
   downloading: "default",
   paused: "secondary",
   completed: "default",
@@ -36,12 +37,21 @@ const statusVariant: Record<
 
 const statusLabel: Record<string, string> = {
   pending: "Pending",
+  queued: "Queued",
   downloading: "Downloading",
   paused: "Paused",
   completed: "Completed",
   failed: "Failed",
   skipped: "Skipped",
 };
+
+function formatTransferred(downloaded: number | null | undefined, total: number | null): string {
+  if (!downloaded && !total) return "-";
+  if (total && total > 0) {
+    return `${formatSize(downloaded ?? 0)} / ${formatSize(total)}`;
+  }
+  return formatSize(downloaded ?? 0);
+}
 
 interface Props {
   task: DownloadTask;
@@ -69,14 +79,16 @@ export default function TaskItem({ task }: Props) {
         <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
           <span>{task.source}</span>
           <span>{task.model_type}</span>
-          <span>{formatSize(task.file_size)}</span>
+          <span>{formatTransferred(task.downloaded_size, task.file_size)}</span>
           {task.status === "downloading" && (
             <span className="text-primary font-medium">
               {formatSpeed(task.speed)}
             </span>
           )}
         </div>
-        {(task.status === "downloading" || task.status === "paused") && (
+        {(task.status === "queued" ||
+          task.status === "downloading" ||
+          task.status === "paused") && (
           <Progress value={task.progress} className="mt-2 h-1.5" />
         )}
         {task.error_msg && task.status === "failed" && (
@@ -87,7 +99,7 @@ export default function TaskItem({ task }: Props) {
       </div>
 
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        {task.status === "downloading" && (
+        {(task.status === "downloading" || task.status === "queued") && (
           <Button
             variant="ghost"
             size="icon"
@@ -129,7 +141,9 @@ export default function TaskItem({ task }: Props) {
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
         )}
-        {(task.status === "downloading" || task.status === "paused") && (
+        {(task.status === "queued" ||
+          task.status === "downloading" ||
+          task.status === "paused") && (
           <Button
             variant="ghost"
             size="icon"

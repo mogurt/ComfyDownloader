@@ -27,6 +27,7 @@ export interface DownloadTask {
   model_type: string;
   target_dir: string;
   file_size: number | null;
+  downloaded_size?: number | null;
   status: TaskStatus;
   progress: number;
   speed: number;
@@ -38,6 +39,7 @@ export interface DownloadTask {
 
 export type TaskStatus =
   | "pending"
+  | "queued"
   | "downloading"
   | "paused"
   | "completed"
