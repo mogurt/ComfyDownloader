@@ -28,6 +28,7 @@ export interface DownloadTask {
   target_dir: string;
   file_size: number | null;
   downloaded_size?: number | null;
+  last_active_at?: string | null;
   status: TaskStatus;
   progress: number;
   speed: number;
@@ -61,6 +62,8 @@ export interface AppSettings {
   comfyui_root: string;
   comfyui_server: string;
   model_base_dir: string;
+  language: AppLanguage;
+  theme: "light" | "dark" | "system";
   aria2_max_concurrent: string;
   aria2_max_connections: string;
   proxy: string;
@@ -69,6 +72,8 @@ export interface AppSettings {
   download_speed_limit: string;
   auto_verify_comfyui: string;
 }
+
+export type AppLanguage = "en" | "zh";
 
 export interface UserRule {
   id: number;
@@ -85,6 +90,25 @@ export interface LogEntry {
   timestamp: string;
   level: "info" | "warn" | "error";
   message: string;
+  taskId?: number | null;
+  gid?: string | null;
+}
+
+export type TaskListFilter =
+  | "all"
+  | "active"
+  | "queued"
+  | "paused"
+  | "failed"
+  | "completed";
+
+export interface TaskSummary {
+  total: number;
+  downloading: number;
+  queued: number;
+  paused: number;
+  failed: number;
+  completed: number;
 }
 
 export interface Aria2Status {

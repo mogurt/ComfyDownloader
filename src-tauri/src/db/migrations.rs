@@ -65,5 +65,21 @@ pub fn get_migrations() -> Vec<Migration> {
         "#,
         kind: MigrationKind::Up,
     },
+    Migration {
+        version: 3,
+        description: "add theme setting",
+        sql: r#"
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'system');
+        "#,
+        kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 4,
+        description: "add language setting",
+        sql: r#"
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'en');
+        "#,
+        kind: MigrationKind::Up,
+    },
     ]
 }

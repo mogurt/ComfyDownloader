@@ -154,3 +154,20 @@ pub async fn get_active_downloads(
         .map(|s| serde_json::to_value(s).map_err(|e| format!("Serialization error: {}", e)))
         .collect()
 }
+
+#[tauri::command]
+pub async fn apply_aria2_runtime_settings(
+    rpc_state: State<'_, Aria2RpcState>,
+    max_concurrent: u32,
+    max_connections: u32,
+    proxy: Option<String>,
+) -> Result<(), String> {
+    let rpc = get_rpc(&rpc_state).await?;
+    let options = serde_json::json!({
+        "max-concurrent-downloads": max_concurrent.to_string(),
+        "max-connection-per-server": max_connections.to_string(),
+        "all-proxy": proxy.unwrap_or_default(),
+    });
+
+    rpc.change_global_option(options).await
+}

@@ -8,22 +8,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Loader2, FileUp, FolderOpen } from "lucide-react";
+import { Download, Loader2, FolderOpen } from "lucide-react";
 import { useTaskStore } from "@/stores/taskStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import * as api from "@/lib/api";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
-
-interface Props {
-  onBatchImport: () => void;
-}
+import { useI18n, translate } from "@/lib/i18n";
 
 function looksLikeUrl(text: string): boolean {
   return /^https?:\/\/.+/i.test(text.trim());
 }
 
-export default function TaskInput({ onBatchImport }: Props) {
+export default function TaskInput() {
+  const { t } = useI18n();
   const [url, setUrl] = useState("");
   const [filename, setFilename] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -107,16 +105,19 @@ export default function TaskInput({ onBatchImport }: Props) {
         setSelectedSubSubdir("");
       }
 
-      const displayDir = matched || "(no match)";
+      const displayDir = matched || t("taskInput.noMatch");
       setRecommendation(`${result.source} -> ${suggestedType} -> ${displayDir}`);
-      addLog("info", `Parsed: ${result.filename} from ${result.source}`);
+      addLog("info", translate("taskInput.log.parsed", {
+        filename: result.filename,
+        source: result.source,
+      }));
     } catch (e) {
-      addLog("error", `Failed to parse URL: ${e}`);
-      setRecommendation(`Error: ${e}`);
+      addLog("error", translate("taskInput.log.parseFailed", { error: String(e) }));
+      setRecommendation(`${t("common.error")}: ${String(e)}`);
     } finally {
       setParsing(false);
     }
-  }, [parsedUrl, settings.proxy, settings.civitai_api_token, subdirs, rules, addLog]);
+  }, [parsedUrl, settings.proxy, settings.civitai_api_token, subdirs, rules, addLog, t]);
 
   const handleUrlChange = (value: string) => {
     setUrl(value);
@@ -150,10 +151,10 @@ export default function TaskInput({ onBatchImport }: Props) {
 
   const handlePickDir = async () => {
     try {
-      const selected = await open({ directory: true, title: "Select target directory" });
+      const selected = await open({ directory: true, title: t("taskInput.dialog.selectTargetDir") });
       const dirPath = extractPath(selected);
       if (dirPath) {
-        addLog("info", `Manual directory selected: ${dirPath}`);
+        addLog("info", translate("taskInput.log.manualDirSelected", { path: dirPath }));
         if (!settings.model_base_dir && !settings.comfyui_root) {
           await updateSetting("model_base_dir", dirPath);
         }
@@ -161,7 +162,7 @@ export default function TaskInput({ onBatchImport }: Props) {
         setSelectedSubSubdir(dirPath);
       }
     } catch (e) {
-      addLog("error", `Failed to open directory picker: ${e}`);
+      addLog("error", translate("taskInput.log.openDirPickerFailed", { error: String(e) }));
     }
   };
 
@@ -170,13 +171,13 @@ export default function TaskInput({ onBatchImport }: Props) {
 
   const handleDownload = async () => {
     if (!url.trim() || !filename.trim() || !resolvedTargetDir.trim()) {
-      addLog("error", "Please fill in URL, filename, and target directory");
+      addLog("error", translate("taskInput.log.fillRequired"));
       return;
     }
 
     const exists = await api.checkFileExists(resolvedTargetDir, filename);
     if (exists && settings.duplicate_strategy === "skip") {
-      addLog("warn", `File already exists, skipping: ${filename}`);
+      addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename }));
       await addTask({
         gid: "",
         url: url.trim(),
@@ -189,7 +190,7 @@ export default function TaskInput({ onBatchImport }: Props) {
         progress: 0,
         speed: 0,
         hash: null,
-        error_msg: "File already exists",
+        error_msg: t("taskInput.error.fileExists"),
       });
       resetForm();
       return;
@@ -234,7 +235,7 @@ export default function TaskInput({ onBatchImport }: Props) {
     <div className="space-y-3 border-b p-4">
       <div className="flex items-center gap-2">
         <Input
-          placeholder="Enter or paste model download URL..."
+          placeholder={t("taskInput.urlPlaceholder")}
           value={url}
           onChange={(e) => handleUrlChange(e.target.value)}
           onPaste={handlePaste}
@@ -246,7 +247,7 @@ export default function TaskInput({ onBatchImport }: Props) {
 
         {!baseDir && !isManual && (
           <span className="text-xs text-destructive whitespace-nowrap">
-            Set Model Base Dir in Settings
+            {t("taskInput.baseDirMissing")}
           </span>
         )}
 
@@ -258,7 +259,7 @@ export default function TaskInput({ onBatchImport }: Props) {
               onValueChange={handleSubdirChange}
             >
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Subdirectory" />
+                <SelectValue placeholder={t("taskInput.subdirectory")} />
               </SelectTrigger>
               <SelectContent>
                 {subdirs.map((d) => (
@@ -279,7 +280,7 @@ export default function TaskInput({ onBatchImport }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__root__">(root)</SelectItem>
+                  <SelectItem value="__root__">{t("taskInput.root")}</SelectItem>
                   {subSubdirs.map((d) => (
                     <SelectItem key={d} value={d}>
                       {d}
@@ -295,7 +296,7 @@ export default function TaskInput({ onBatchImport }: Props) {
           variant="outline"
           size="icon"
           onClick={handlePickDir}
-          title="Choose target directory manually"
+          title={t("taskInput.chooseTargetDir")}
         >
           <FolderOpen className="h-4 w-4" />
         </Button>
@@ -303,31 +304,26 @@ export default function TaskInput({ onBatchImport }: Props) {
         <Button
           onClick={handleDownload}
           disabled={!aria2Ready || !url.trim() || parsing || !resolvedTargetDir}
-          title={aria2Ready ? "Start download" : "Waiting for aria2..."}
+          title={aria2Ready ? t("taskInput.startDownload") : t("taskInput.waitingAria2")}
         >
           {parsing ? (
             <Loader2 className="mr-1 h-4 w-4 animate-spin" />
           ) : (
             <Download className="mr-1 h-4 w-4" />
           )}
-          Download
-        </Button>
-
-        <Button variant="outline" onClick={onBatchImport} title="Import multiple URLs">
-          <FileUp className="mr-1 h-4 w-4" />
-          Batch
+          {t("taskInput.download")}
         </Button>
       </div>
 
       {recommendation && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="font-medium">Recommended:</span>
+          <span className="font-medium">{t("taskInput.recommended")}</span>
           <span>{recommendation}</span>
         </div>
       )}
       {resolvedTargetDir && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="font-medium">Target:</span>
+          <span className="font-medium">{t("taskInput.target")}</span>
           <span className="truncate">{resolvedTargetDir}</span>
         </div>
       )}

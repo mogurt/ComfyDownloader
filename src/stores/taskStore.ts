@@ -1,9 +1,39 @@
 import { create } from "zustand";
-import type { Aria2Status, DownloadTask, LogEntry, TaskStatus } from "@/lib/types";
+import type {
+  Aria2Status,
+  DownloadTask,
+  LogEntry,
+  TaskListFilter,
+  TaskStatus,
+  TaskSummary,
+} from "@/lib/types";
 import Database from "@tauri-apps/plugin-sql";
 import * as api from "@/lib/api";
+import { translate } from "@/lib/i18n";
 
 let db: Database | null = null;
+
+function matchesTaskFilter(task: DownloadTask, filter: TaskListFilter): boolean {
+  switch (filter) {
+    case "active":
+      return task.status === "queued" || task.status === "downloading";
+    case "queued":
+      return task.status === "queued";
+    case "paused":
+      return task.status === "paused";
+    case "failed":
+      return task.status === "failed";
+    case "completed":
+      return task.status === "completed";
+    default:
+      return true;
+  }
+}
+
+function extractGidFromMessage(message: string): string | null {
+  const match = message.match(/\b([0-9a-f]{16})\b/i);
+  return match?.[1] ?? null;
+}
 
 async function getDb(): Promise<Database> {
   if (!db) {
@@ -12,17 +42,34 @@ async function getDb(): Promise<Database> {
   return db;
 }
 
+interface TaskLogMeta {
+  gid?: string | null;
+  taskId?: number | null;
+}
+
 interface TaskState {
   tasks: DownloadTask[];
   logs: LogEntry[];
   aria2Ready: boolean;
   selectedTaskId: number | null;
+  selectionMode: boolean;
+  selectedTaskIds: number[];
   logIdCounter: number;
 
   setAria2Ready: (ready: boolean) => void;
   setSelectedTask: (id: number | null) => void;
+  setSelectionMode: (enabled: boolean) => void;
+  toggleTaskSelection: (id: number) => void;
+  clearTaskSelection: () => void;
+  selectVisibleTasks: (ids: number[]) => void;
+  toggleVisibleTasks: (ids: number[]) => void;
+  isTaskSelected: (id: number) => boolean;
   addLog: (level: LogEntry["level"], message: string) => void;
+  addTaskLog: (level: LogEntry["level"], message: string, meta?: TaskLogMeta) => void;
   clearLogs: () => void;
+  getTaskLogs: (taskId: number, gid?: string) => LogEntry[];
+  getTasksByFilter: (filter: TaskListFilter) => DownloadTask[];
+  getTaskSummary: () => TaskSummary;
 
   loadTasks: () => Promise<void>;
   resetStaleTasks: () => Promise<void>;
@@ -37,6 +84,11 @@ interface TaskState {
   resumeTask: (task: DownloadTask) => Promise<void>;
   cancelTask: (task: DownloadTask) => Promise<void>;
   retryTask: (task: DownloadTask) => Promise<void>;
+  retryFailedTasks: () => Promise<void>;
+  clearCompletedTasks: () => Promise<void>;
+  startSelectedTasks: (ids: number[]) => Promise<void>;
+  pauseSelectedTasks: (ids: number[]) => Promise<void>;
+  deleteSelectedTasks: (ids: number[]) => Promise<void>;
 
   handleGidStarted: (gid: string) => Promise<void>;
   handleGidComplete: (gid: string) => Promise<void>;
@@ -51,19 +103,61 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   logs: [],
   aria2Ready: false,
   selectedTaskId: null,
+  selectionMode: false,
+  selectedTaskIds: [],
   logIdCounter: 0,
 
   setAria2Ready: (ready) => set({ aria2Ready: ready }),
 
   setSelectedTask: (id) => set({ selectedTaskId: id }),
 
+  setSelectionMode: (enabled) => set((s) => ({
+    selectionMode: enabled,
+    selectedTaskId: enabled ? null : s.selectedTaskId,
+    selectedTaskIds: enabled ? s.selectedTaskIds : [],
+  })),
+
+  toggleTaskSelection: (id) => set((s) => ({
+    selectedTaskIds: s.selectedTaskIds.includes(id)
+      ? s.selectedTaskIds.filter((taskId) => taskId !== id)
+      : [...s.selectedTaskIds, id],
+  })),
+
+  clearTaskSelection: () => set({ selectedTaskIds: [] }),
+
+  selectVisibleTasks: (ids) => set((s) => ({
+    selectedTaskIds: Array.from(new Set([...s.selectedTaskIds, ...ids])),
+  })),
+
+  toggleVisibleTasks: (ids) => set((s) => {
+    const allSelected = ids.length > 0 && ids.every((id) => s.selectedTaskIds.includes(id));
+    return {
+      selectedTaskIds: allSelected
+        ? s.selectedTaskIds.filter((id) => !ids.includes(id))
+        : Array.from(new Set([...s.selectedTaskIds, ...ids])),
+    };
+  }),
+
+  isTaskSelected: (id) => get().selectedTaskIds.includes(id),
+
   addLog: (level, message) => {
+    get().addTaskLog(level, message);
+  },
+
+  addTaskLog: (level, message, meta = {}) => {
     const id = get().logIdCounter + 1;
+    const derivedGid = meta.gid ?? extractGidFromMessage(message);
+    const derivedTaskId = meta.taskId
+      ?? (derivedGid
+        ? get().tasks.find((task) => task.gid === derivedGid)?.id ?? null
+        : null);
     const entry: LogEntry = {
       id,
       timestamp: new Date().toLocaleTimeString(),
       level,
       message,
+      gid: derivedGid ?? null,
+      taskId: derivedTaskId ?? null,
     };
     set((s) => ({
       logs: [...s.logs.slice(-200), entry],
@@ -73,6 +167,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   clearLogs: () => set({ logs: [] }),
 
+  getTaskLogs: (taskId, gid) => {
+    return get().logs.filter((log) => log.taskId === taskId || (!!gid && log.gid === gid));
+  },
+
+  getTasksByFilter: (filter) => {
+    return get().tasks.filter((task) => matchesTaskFilter(task, filter));
+  },
+
+  getTaskSummary: () => {
+    const tasks = get().tasks;
+    return {
+      total: tasks.length,
+      downloading: tasks.filter((task) => task.status === "downloading").length,
+      queued: tasks.filter((task) => task.status === "queued").length,
+      paused: tasks.filter((task) => task.status === "paused").length,
+      failed: tasks.filter((task) => task.status === "failed").length,
+      completed: tasks.filter((task) => task.status === "completed").length,
+    };
+  },
+
   loadTasks: async () => {
     const database = await getDb();
     const rows = await database.select<DownloadTask[]>(
@@ -81,6 +195,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({
       tasks: rows.map((row) => ({
         downloaded_size: row.downloaded_size ?? 0,
+        last_active_at: row.last_active_at ?? null,
         ...row,
       })),
     });
@@ -118,6 +233,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       created_at: new Date().toISOString(),
       completed_at: null,
       downloaded_size: task.downloaded_size ?? 0,
+      last_active_at: task.last_active_at ?? null,
       ...task,
     };
     set((s) => ({ tasks: [createdTask, ...s.tasks] }));
@@ -177,13 +293,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   deleteTask: async (id) => {
     const database = await getDb();
     await database.execute("DELETE FROM downloads WHERE id=$1", [id]);
-    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+    set((s) => ({
+      tasks: s.tasks.filter((t) => t.id !== id),
+      selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
+      selectedTaskIds: s.selectedTaskIds.filter((taskId) => taskId !== id),
+    }));
   },
 
   clearAllTasks: async () => {
     const database = await getDb();
     await database.execute("DELETE FROM downloads", []);
-    set({ tasks: [], selectedTaskId: null });
+    set({ tasks: [], selectedTaskId: null, selectedTaskIds: [] });
   },
 
   startDownload: async (task) => {
@@ -201,12 +321,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         error_msg: null,
         speed: 0,
       });
-      store.addLog("info", `Started download: ${task.filename}`);
+      store.addTaskLog("info", translate("log.startedDownload", { filename: task.filename }), {
+        taskId: task.id,
+      });
     } catch (e) {
       await store.updateTaskStatus(task.id, "failed", {
         error_msg: String(e),
       });
-      store.addLog("error", `Failed to start ${task.filename}: ${e}`);
+      store.addTaskLog("error", translate("log.failedStart", {
+        filename: task.filename,
+        error: String(e),
+      }), {
+        taskId: task.id,
+      });
     }
   },
 
@@ -216,11 +343,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     } catch (e) {
       const msg = String(e);
       if (!msg.includes("is not found")) {
-        get().addLog("error", `Failed to pause ${task.filename}: ${e}`);
+        get().addTaskLog("error", translate("log.failedPause", {
+          filename: task.filename,
+          error: String(e),
+        }), {
+          taskId: task.id,
+          gid: task.gid || null,
+        });
       }
     }
     await get().updateTaskStatus(task.id, "paused", { speed: 0 });
-    get().addLog("info", `Paused: ${task.filename}`);
+    get().addTaskLog("info", translate("log.paused", { filename: task.filename }), {
+      taskId: task.id,
+      gid: task.gid || null,
+    });
   },
 
   resumeTask: async (task) => {
@@ -233,17 +369,29 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (gid) {
         await api.resumeDownload(gid);
         await get().updateTaskStatus(current.id, "downloading", { speed: 0 });
-        get().addLog("info", `Resumed: ${current.filename}`);
+        get().addTaskLog("info", translate("log.resumed", { filename: current.filename }), {
+          taskId: current.id,
+          gid,
+        });
       } else {
         await get().startDownload(current);
       }
     } catch (e) {
       const msg = String(e);
       if (msg.includes("is not found") || msg.includes("cannot be unpaused")) {
-        get().addLog("info", `Re-downloading: ${current.filename}`);
+        get().addTaskLog("info", translate("log.redownloading", { filename: current.filename }), {
+          taskId: current.id,
+          gid,
+        });
         await get().startDownload(current);
       } else {
-        get().addLog("error", `Failed to resume ${current.filename}: ${e}`);
+        get().addTaskLog("error", translate("log.failedResume", {
+          filename: current.filename,
+          error: String(e),
+        }), {
+          taskId: current.id,
+          gid,
+        });
       }
     }
   },
@@ -254,15 +402,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     } catch (e) {
       const msg = String(e);
       if (!msg.includes("is not found")) {
-        get().addLog("error", `Failed to cancel ${task.filename}: ${e}`);
+        get().addTaskLog("error", translate("log.failedCancel", {
+          filename: task.filename,
+          error: String(e),
+        }), {
+          taskId: task.id,
+          gid: task.gid || null,
+        });
         return;
       }
     }
     await get().updateTaskStatus(task.id, "failed", {
-      error_msg: "Cancelled by user",
+      error_msg: translate("log.cancelledByUser"),
       speed: 0,
     });
-    get().addLog("info", `Cancelled: ${task.filename}`);
+    get().addTaskLog("info", translate("log.cancelled", { filename: task.filename }), {
+      taskId: task.id,
+      gid: task.gid || null,
+    });
   },
 
   retryTask: async (task) => {
@@ -279,10 +436,76 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
+  retryFailedTasks: async () => {
+    const failedTasks = get().tasks.filter((task) => task.status === "failed");
+    for (const task of failedTasks) {
+      await get().retryTask(task);
+    }
+  },
+
+  clearCompletedTasks: async () => {
+    const database = await getDb();
+    const completedIds = get().tasks
+      .filter((task) => task.status === "completed")
+      .map((task) => task.id);
+    if (completedIds.length === 0) return;
+
+    await Promise.all(
+      completedIds.map((id) =>
+        database.execute("DELETE FROM downloads WHERE id=$1", [id])
+      )
+    );
+
+    set((s) => ({
+      tasks: s.tasks.filter((task) => task.status !== "completed"),
+      selectedTaskId: completedIds.includes(s.selectedTaskId ?? -1)
+        ? null
+        : s.selectedTaskId,
+      selectedTaskIds: s.selectedTaskIds.filter((id) => !completedIds.includes(id)),
+    }));
+  },
+
+  startSelectedTasks: async (ids) => {
+    const tasks = get().tasks.filter((task) => ids.includes(task.id));
+    for (const task of tasks) {
+      if (task.status === "pending") {
+        await get().startDownload(task);
+      } else if (task.status === "paused") {
+        await get().resumeTask(task);
+      } else if (task.status === "failed") {
+        await get().retryTask(task);
+      }
+    }
+  },
+
+  pauseSelectedTasks: async (ids) => {
+    const tasks = get().tasks.filter(
+      (task) => ids.includes(task.id) && (task.status === "queued" || task.status === "downloading")
+    );
+    for (const task of tasks) {
+      await get().pauseTask(task);
+    }
+  },
+
+  deleteSelectedTasks: async (ids) => {
+    const tasks = get().tasks.filter((task) => ids.includes(task.id));
+    for (const task of tasks) {
+      if (task.status === "queued" || task.status === "downloading" || task.status === "paused") {
+        await get().cancelTask(task);
+      }
+      await get().deleteTask(task.id);
+    }
+    set({ selectedTaskIds: [] });
+  },
+
   handleGidStarted: async (gid) => {
     const task = get().tasks.find((t) => t.gid === gid);
     if (task && task.status !== "downloading") {
       await get().updateTaskStatus(task.id, "downloading");
+      get().addTaskLog("info", translate("log.downloadStarted", { filename: task.filename }), {
+        taskId: task.id,
+        gid,
+      });
     }
   },
 
@@ -293,7 +516,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         downloaded_size: task.file_size ?? task.downloaded_size ?? 0,
         speed: 0,
       });
-      get().addLog("info", `Completed: ${task.filename}`);
+      get().addTaskLog("info", translate("log.completed", { filename: task.filename }), {
+        taskId: task.id,
+        gid,
+      });
     }
   },
 
@@ -302,12 +528,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (task && task.status !== "failed") {
       try {
         const status = await api.getDownloadStatus(gid);
-        const errMsg = String(status.errorMessage ?? "Unknown error");
+        const errMsg = String(status.errorMessage ?? translate("log.unknownError"));
         await get().updateTaskStatus(task.id, "failed", { error_msg: errMsg });
       } catch {
-        await get().updateTaskStatus(task.id, "failed", { error_msg: "Download failed" });
+        await get().updateTaskStatus(task.id, "failed", { error_msg: translate("log.downloadFailed") });
       }
-      get().addLog("error", `Failed: ${task.filename}`);
+      get().addTaskLog("error", translate("log.failed", { filename: task.filename }), {
+        taskId: task.id,
+        gid,
+      });
     }
   },
 
@@ -315,6 +544,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const task = get().tasks.find((t) => t.gid === gid);
     if (task && (task.status === "downloading" || task.status === "queued")) {
       await get().updateTaskStatus(task.id, "paused", { speed: 0 });
+      get().addTaskLog("info", translate("log.paused", { filename: task.filename }), {
+        taskId: task.id,
+        gid,
+      });
     }
   },
 
@@ -340,12 +573,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           const speed = parseInt(String(status.downloadSpeed ?? "0"), 10);
           const progress = total > 0 ? (completed / total) * 100 : 0;
           const aria2Status = String(status.status ?? "");
+          const lastActiveAt = completed > (task.downloaded_size ?? 0) || speed > 0
+            ? new Date().toISOString()
+            : task.last_active_at ?? null;
 
           get().updateTaskByGid(task.gid, {
             progress,
             speed,
             downloaded_size: completed,
             file_size: total || task.file_size,
+            last_active_at: lastActiveAt,
           });
 
           if (aria2Status === "active" && task.status !== "downloading") {
@@ -356,12 +593,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             await get().updateTaskStatus(task.id, "completed", {
               downloaded_size: total,
               speed: 0,
+              last_active_at: new Date().toISOString(),
             });
-            get().addLog("info", `Completed: ${task.filename}`);
           } else if (aria2Status === "error") {
-            const errMsg = String(status.errorMessage ?? "Unknown error");
+            const errMsg = String(status.errorMessage ?? translate("log.unknownError"));
             await get().updateTaskStatus(task.id, "failed", { error_msg: errMsg });
-            get().addLog("error", `Failed: ${task.filename} - ${errMsg}`);
+            get().addTaskLog("error", translate("log.failedWithReason", {
+              filename: task.filename,
+              error: errMsg,
+            }), {
+              taskId: task.id,
+              gid: task.gid,
+            });
           } else if (aria2Status === "paused") {
             await get().updateTaskStatus(task.id, "paused", { speed: 0 });
           }

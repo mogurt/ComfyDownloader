@@ -98,6 +98,18 @@ export async function getActiveDownloads(): Promise<Aria2Status[]> {
   return invoke("get_active_downloads");
 }
 
+export async function applyAria2RuntimeSettings(
+  maxConcurrent: number,
+  maxConnections: number,
+  proxy?: string
+): Promise<void> {
+  return invoke("apply_aria2_runtime_settings", {
+    maxConcurrent,
+    maxConnections,
+    proxy: proxy ?? "",
+  });
+}
+
 export async function getModelTypes(): Promise<ModelTypeInfo[]> {
   return invoke("get_model_types");
 }
@@ -123,6 +135,13 @@ export async function verifyModelInComfyui(
 
 export async function listSubdirs(baseDir: string): Promise<string[]> {
   return invoke("list_subdirs", { baseDir });
+}
+
+export async function resolveRelativeSubdir(
+  baseDir: string,
+  relativeSubdir: string
+): Promise<string> {
+  return invoke("resolve_relative_subdir", { baseDir, relativeSubdir });
 }
 
 export async function openDirectory(path: string): Promise<void> {

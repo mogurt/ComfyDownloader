@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { AppSettings, DirMapping, UserRule } from "@/lib/types";
 import Database from "@tauri-apps/plugin-sql";
+import * as api from "@/lib/api";
 
 let db: Database | null = null;
 
@@ -19,6 +20,7 @@ interface SettingsState {
 
   loadSettings: () => Promise<void>;
   updateSetting: (key: string, value: string) => Promise<void>;
+  syncAria2Settings: () => Promise<void>;
   loadDirMappings: () => Promise<void>;
   saveDirMapping: (mapping: DirMapping) => Promise<void>;
   loadRules: () => Promise<void>;
@@ -32,6 +34,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     comfyui_root: "",
     comfyui_server: "http://127.0.0.1:8188",
     model_base_dir: "",
+    language: "en",
+    theme: "system",
     aria2_max_concurrent: "3",
     aria2_max_connections: "16",
     proxy: "",
@@ -67,10 +71,32 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       );
       const settings = { ...get().settings, [key]: value };
       set({ settings });
+      if (["aria2_max_concurrent", "aria2_max_connections", "proxy"].includes(key)) {
+        await get().syncAria2Settings();
+      }
       console.log(`[Settings] Updated ${key} =`, value);
     } catch (e) {
       console.error(`[Settings] Failed to update ${key}:`, e);
       throw e;
+    }
+  },
+
+  syncAria2Settings: async () => {
+    const settings = get().settings;
+    const maxConcurrent = Number.parseInt(settings.aria2_max_concurrent, 10);
+    const maxConnections = Number.parseInt(settings.aria2_max_connections, 10);
+
+    if (!Number.isFinite(maxConcurrent) || maxConcurrent < 1) return;
+    if (!Number.isFinite(maxConnections) || maxConnections < 1) return;
+
+    try {
+      await api.applyAria2RuntimeSettings(
+        maxConcurrent,
+        maxConnections,
+        settings.proxy.trim()
+      );
+    } catch (e) {
+      console.warn("[Settings] Failed to sync aria2 runtime settings:", e);
     }
   },
 

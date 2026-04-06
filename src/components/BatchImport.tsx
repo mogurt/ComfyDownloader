@@ -14,13 +14,54 @@ import * as api from "@/lib/api";
 import { extractPath } from "@/lib/api";
 import { FileUp, Loader2 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useI18n, translate } from "@/lib/i18n";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
+interface BatchImportRow {
+  url: string;
+  relativeSubdir: string | null;
+}
+
+function parseBatchImportLine(line: string): BatchImportRow | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  let url = trimmed;
+  let relativeSubdir: string | null = null;
+
+  const tabIndex = trimmed.indexOf("\t");
+  const pipeIndex = trimmed.indexOf("|");
+  const separatorIndex = tabIndex >= 0
+    ? tabIndex
+    : pipeIndex >= 0
+      ? pipeIndex
+      : -1;
+
+  if (separatorIndex >= 0) {
+    url = trimmed.slice(0, separatorIndex).trim();
+    relativeSubdir = trimmed.slice(separatorIndex + 1).trim() || null;
+  }
+
+  if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+    return null;
+  }
+
+  return { url, relativeSubdir };
+}
+
+function getDisplayModelType(resultType: string | null, matchedSubdir: string | null, relativeSubdir: string | null) {
+  if (relativeSubdir) {
+    return relativeSubdir.split(/[\\/]/).find(Boolean) || "custom";
+  }
+  return matchedSubdir || resultType || "custom";
+}
+
 export default function BatchImport({ open: isOpen, onClose }: Props) {
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const [importing, setImporting] = useState(false);
   const [subdirs, setSubdirs] = useState<string[]>([]);
@@ -41,8 +82,8 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
   const handleImportFile = async () => {
     try {
       const file = await open({
-        title: "Import URL list",
-        filters: [{ name: "Text files", extensions: ["txt", "csv"] }],
+        title: t("batchImport.dialogTitle"),
+        filters: [{ name: t("batchImport.textFiles"), extensions: ["txt", "csv"] }],
       });
       const filePath = extractPath(file);
       if (filePath) {
@@ -50,30 +91,31 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
         setText((prev) => (prev ? prev + "\n" + contents : contents));
       }
     } catch {
-      addLog("error", "Failed to read file");
+      addLog("error", translate("batchImport.log.readFileFailed"));
     }
   };
 
   const handleImport = async () => {
-    const urls = text
+    const rows = text
       .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && (line.startsWith("http://") || line.startsWith("https://")));
+      .map(parseBatchImportLine)
+      .filter((row): row is BatchImportRow => row !== null);
 
-    if (urls.length === 0) {
-      addLog("warn", "No valid URLs found");
+    if (rows.length === 0) {
+      addLog("warn", translate("batchImport.log.noValidUrls"));
       return;
     }
 
     if (!baseDir) {
-      addLog("error", "Model base directory not configured. Go to Settings -> Directories.");
+      addLog("error", translate("batchImport.log.baseDirMissing"));
       return;
     }
 
     setImporting(true);
-    addLog("info", `Importing ${urls.length} URLs...`);
+    addLog("info", translate("batchImport.log.importing", { count: rows.length }));
 
-    for (const url of urls) {
+    for (const row of rows) {
+      const { url, relativeSubdir } = row;
       try {
         const result = await api.parseDownloadUrl(
           url,
@@ -81,11 +123,30 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
           settings.civitai_api_token || undefined
         );
 
-        const matchedSubdir = api.matchSubdir(result.suggested_type, subdirs);
-        const targetDir = matchedSubdir ? `${baseDir}\\${matchedSubdir}` : "";
+        let matchedSubdir: string | null = null;
+        let targetDir = "";
+
+        if (relativeSubdir) {
+          try {
+            targetDir = await api.resolveRelativeSubdir(baseDir, relativeSubdir);
+          } catch (e) {
+            addLog("warn", translate("batchImport.log.invalidRelativeSubdir", {
+              url,
+              subdir: relativeSubdir,
+              error: String(e),
+            }));
+            continue;
+          }
+        } else {
+          matchedSubdir = api.matchSubdir(result.suggested_type, subdirs);
+          targetDir = matchedSubdir ? `${baseDir}\\${matchedSubdir}` : "";
+        }
 
         if (!targetDir) {
-          addLog("warn", `No matching subdirectory for ${result.filename} (type: ${result.suggested_type}), skipping`);
+          addLog("warn", translate("batchImport.log.noMatchingSubdir", {
+            filename: result.filename,
+            type: result.suggested_type ?? "unknown",
+          }));
           continue;
         }
 
@@ -94,7 +155,7 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
           url,
           filename: result.filename,
           source: result.source,
-          model_type: matchedSubdir || "custom",
+          model_type: getDisplayModelType(result.suggested_type, matchedSubdir, relativeSubdir),
           target_dir: targetDir,
           file_size: result.file_size,
           status: "pending",
@@ -110,30 +171,36 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
           await startDownload(task);
         }
       } catch (e) {
-        addLog("error", `Failed to import ${url}: ${e}`);
+        addLog("error", translate("batchImport.log.importFailed", {
+          url,
+          error: String(e),
+        }));
       }
     }
 
     setImporting(false);
     setText("");
     onClose();
-    addLog("info", `Batch import complete`);
+    addLog("info", translate("batchImport.log.complete"));
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Batch Import URLs</DialogTitle>
+          <DialogTitle>{t("batchImport.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           {!baseDir && (
             <p className="text-sm text-destructive">
-              Model base directory not set. Configure it in Settings first.
+              {t("batchImport.noBaseDir")}
             </p>
           )}
+          <p className="text-xs text-muted-foreground">
+            {t("batchImport.formatHelp")}
+          </p>
           <Textarea
-            placeholder="Paste URLs here, one per line..."
+            placeholder={t("batchImport.placeholder")}
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={10}
@@ -141,16 +208,16 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
           />
           <Button variant="outline" size="sm" onClick={handleImportFile}>
             <FileUp className="mr-1 h-4 w-4" />
-            Import from file
+            {t("batchImport.importFromFile")}
           </Button>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleImport} disabled={importing || !text.trim() || !baseDir}>
             {importing && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-            Import & Download
+            {t("batchImport.importAndDownload")}
           </Button>
         </DialogFooter>
       </DialogContent>

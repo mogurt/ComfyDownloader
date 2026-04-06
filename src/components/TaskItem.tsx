@@ -1,79 +1,85 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Pause, Play, RotateCcw, X, Trash2, FolderOpen } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  FolderOpen,
+  Pause,
+  Play,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useTaskStore } from "@/stores/taskStore";
 import * as api from "@/lib/api";
 import type { DownloadTask } from "@/lib/types";
-
-function formatSpeed(bytesPerSec: number): string {
-  if (bytesPerSec === 0) return "-";
-  if (bytesPerSec < 1024) return `${bytesPerSec} B/s`;
-  if (bytesPerSec < 1024 * 1024)
-    return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
-  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
-}
-
-function formatSize(bytes: number | null): string {
-  if (!bytes || bytes === 0) return "-";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-const statusVariant: Record<
-  string,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  pending: "outline",
-  queued: "secondary",
-  downloading: "default",
-  paused: "secondary",
-  completed: "default",
-  failed: "destructive",
-  skipped: "secondary",
-};
-
-const statusLabel: Record<string, string> = {
-  pending: "Pending",
-  queued: "Queued",
-  downloading: "Downloading",
-  paused: "Paused",
-  completed: "Completed",
-  failed: "Failed",
-  skipped: "Skipped",
-};
-
-function formatTransferred(downloaded: number | null | undefined, total: number | null): string {
-  if (!downloaded && !total) return "-";
-  if (total && total > 0) {
-    return `${formatSize(downloaded ?? 0)} / ${formatSize(total)}`;
-  }
-  return formatSize(downloaded ?? 0);
-}
+import {
+  formatEta,
+  formatSpeed,
+  formatTransferred,
+} from "@/lib/download-format";
+import { useI18n } from "@/lib/i18n";
+import { getTaskStatusMeta } from "@/lib/task-status";
 
 interface Props {
   task: DownloadTask;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelected?: () => void;
 }
 
-export default function TaskItem({ task }: Props) {
+export default function TaskItem({
+  task,
+  selectionMode = false,
+  selected = false,
+  onToggleSelected,
+}: Props) {
+  const { t } = useI18n();
   const { pauseTask, resumeTask, cancelTask, retryTask, deleteTask, setSelectedTask } =
     useTaskStore();
+  const statusMeta = getTaskStatusMeta(t)[task.status];
+  const StatusIcon = statusMeta.icon;
+  const remainingBytes = Math.max(0, (task.file_size ?? 0) - (task.downloaded_size ?? 0));
+  const eta = task.status === "downloading" && task.speed > 0 && task.file_size
+    ? remainingBytes / task.speed
+    : null;
 
   return (
     <div
-      className="group flex items-center gap-3 border-b px-4 py-3 transition-colors hover:bg-muted/50 cursor-pointer"
-      onClick={() => setSelectedTask(task.id)}
+      className={cn(
+        "group flex items-center gap-3 border-b px-4 py-3 transition-colors hover:bg-muted/50 cursor-pointer",
+        selectionMode && selected && "bg-primary/5"
+      )}
+      onClick={() => {
+        if (selectionMode) {
+          onToggleSelected?.();
+          return;
+        }
+        setSelectedTask(task.id);
+      }}
     >
+      {selectionMode && (
+        <label
+          className="flex shrink-0 items-center"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border accent-primary"
+            checked={selected}
+            onChange={() => onToggleSelected?.()}
+          />
+        </label>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
+          <StatusIcon className={cn("h-4 w-4 shrink-0", statusMeta.textClass)} />
           <span className="truncate text-sm font-medium">{task.filename}</span>
           <Badge
-            variant={statusVariant[task.status] || "outline"}
-            className="text-xs"
+            variant="outline"
+            className={cn("border text-xs shadow-none", statusMeta.chipClass)}
           >
-            {statusLabel[task.status] || task.status}
+            {statusMeta.label}
           </Badge>
         </div>
         <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
@@ -81,8 +87,9 @@ export default function TaskItem({ task }: Props) {
           <span>{task.model_type}</span>
           <span>{formatTransferred(task.downloaded_size, task.file_size)}</span>
           {task.status === "downloading" && (
-            <span className="text-primary font-medium">
+            <span className={cn("font-medium", statusMeta.textClass)}>
               {formatSpeed(task.speed)}
+              {eta != null ? ` · ETA ${formatEta(eta)}` : ""}
             </span>
           )}
         </div>
@@ -98,13 +105,18 @@ export default function TaskItem({ task }: Props) {
         )}
       </div>
 
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div
+        className={cn(
+          "flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100",
+          selectionMode && "pointer-events-none opacity-25 grayscale"
+        )}
+      >
         {(task.status === "downloading" || task.status === "queued") && (
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="Pause"
+            title={t("taskItem.pause")}
             onClick={(e) => {
               e.stopPropagation();
               pauseTask(task);
@@ -118,7 +130,7 @@ export default function TaskItem({ task }: Props) {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="Resume"
+            title={t("taskItem.resume")}
             onClick={(e) => {
               e.stopPropagation();
               resumeTask(task);
@@ -132,7 +144,7 @@ export default function TaskItem({ task }: Props) {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="Retry"
+            title={t("taskItem.retry")}
             onClick={(e) => {
               e.stopPropagation();
               retryTask(task);
@@ -148,7 +160,7 @@ export default function TaskItem({ task }: Props) {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="Cancel"
+            title={t("taskItem.cancel")}
             onClick={(e) => {
               e.stopPropagation();
               cancelTask(task);
@@ -162,7 +174,7 @@ export default function TaskItem({ task }: Props) {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="Open download directory"
+            title={t("taskItem.openDirectory")}
             onClick={(e) => {
               e.stopPropagation();
               api.openDirectory(task.target_dir).catch(console.error);
@@ -178,7 +190,7 @@ export default function TaskItem({ task }: Props) {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="Delete record"
+            title={t("taskItem.deleteRecord")}
             onClick={(e) => {
               e.stopPropagation();
               deleteTask(task.id);

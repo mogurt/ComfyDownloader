@@ -308,6 +308,11 @@ impl Aria2Rpc {
             .ok_or_else(|| "Invalid remove response".to_string())
     }
 
+    pub async fn change_global_option(&self, options: Value) -> Result<(), String> {
+        self.call("aria2.changeGlobalOption", vec![options]).await?;
+        Ok(())
+    }
+
     pub async fn shutdown(&self) -> Result<(), String> {
         let _ = self.call("aria2.shutdown", vec![]).await;
         Ok(())

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTaskStore } from "@/stores/taskStore";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { translate } from "@/lib/i18n";
 
 export function useAria2Events() {
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -17,7 +19,8 @@ export function useAria2Events() {
           if (cancelled) return;
           const payload = event.payload as { port: number };
           useTaskStore.getState().setAria2Ready(true);
-          useTaskStore.getState().addLog("info", `aria2 ready on port ${payload.port}`);
+          useTaskStore.getState().addLog("info", translate("log.aria2Ready", { port: payload.port }));
+          void useSettingsStore.getState().syncAria2Settings();
         })
       );
 
@@ -50,7 +53,6 @@ export function useAria2Events() {
           if (cancelled) return;
           const payload = event.payload as { gid: string };
           useTaskStore.getState().handleGidStarted(payload.gid);
-          useTaskStore.getState().addLog("info", `Download started: ${payload.gid}`);
         })
       );
 
@@ -58,7 +60,7 @@ export function useAria2Events() {
         await listen("aria2://error", (event) => {
           if (cancelled) return;
           const payload = event.payload as { error: string };
-          useTaskStore.getState().addLog("error", `aria2 error: ${payload.error}`);
+          useTaskStore.getState().addLog("error", translate("log.aria2Error", { error: payload.error }));
         })
       );
 
@@ -73,7 +75,10 @@ export function useAria2Events() {
           const message = payload.message?.trim();
           if (!message) return;
           const level = payload.level ?? "info";
-          useTaskStore.getState().addLog(level, `[aria2 ${payload.stream ?? "log"}] ${message}`);
+          useTaskStore.getState().addTaskLog(
+            level,
+            `[aria2 ${payload.stream ?? "log"}] ${message}`
+          );
         })
       );
 

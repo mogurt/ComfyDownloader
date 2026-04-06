@@ -1,6 +1,7 @@
 use crate::model_type::ModelType;
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirMapping {
@@ -99,4 +100,50 @@ pub fn list_subdirs(base_dir: String) -> Result<Vec<String>, String> {
 
     dirs.sort();
     Ok(dirs)
+}
+
+#[tauri::command]
+pub fn resolve_relative_subdir(base_dir: String, relative_subdir: String) -> Result<String, String> {
+    let base_path = PathBuf::from(&base_dir);
+    if !base_path.exists() || !base_path.is_dir() {
+        return Err(format!("Base directory does not exist: {}", base_dir));
+    }
+
+    let trimmed = relative_subdir.trim();
+    if trimmed.is_empty() {
+        return Err("Subdirectory cannot be empty".to_string());
+    }
+
+    let relative_path = Path::new(trimmed);
+    if relative_path.is_absolute() {
+        return Err("Subdirectory must be a relative path inside the model base directory".to_string());
+    }
+
+    for component in relative_path.components() {
+        match component {
+            Component::Normal(_) => {}
+            _ => {
+                return Err("Subdirectory must stay within the model base directory".to_string());
+            }
+        }
+    }
+
+    let canonical_base = base_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve base directory: {}", e))?;
+    let target_path = canonical_base.join(relative_path);
+
+    if !target_path.exists() || !target_path.is_dir() {
+        return Err(format!("Directory does not exist: {}", target_path.display()));
+    }
+
+    let canonical_target = target_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve target directory: {}", e))?;
+
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err("Subdirectory must stay within the model base directory".to_string());
+    }
+
+    Ok(canonical_target.to_string_lossy().to_string())
 }

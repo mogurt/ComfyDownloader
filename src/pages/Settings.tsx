@@ -15,18 +15,48 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { FolderOpen, Plus, Trash2, Loader2 } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Loader2, Laptop, Moon, Sun } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "@/lib/api";
 import { extractPath } from "@/lib/api";
 import type { ModelType } from "@/lib/types";
+import type { ThemeMode } from "@/lib/theme";
+import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 const MODEL_TYPES: ModelType[] = [
   "checkpoint", "diffusion_model", "lora", "vae", "embedding",
   "controlnet", "upscale_model", "clip", "ipadapter", "custom",
 ];
 
+const THEME_OPTIONS: Array<{
+  value: ThemeMode;
+  label: string;
+  description: string;
+  icon: typeof Sun;
+}> = [
+  {
+    value: "light",
+    label: "Light",
+    description: "Bright neutral surfaces with softer blue accents.",
+    icon: Sun,
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "Deeper slate surfaces with calmer contrast and vivid highlights.",
+    icon: Moon,
+  },
+  {
+    value: "system",
+    label: "System",
+    description: "Follow your OS appearance automatically.",
+    icon: Laptop,
+  },
+];
+
 export default function Settings() {
+  const { t } = useI18n();
   const {
     settings,
     rules,
@@ -57,7 +87,7 @@ export default function Settings() {
 
   const handlePickComfyRoot = async () => {
     try {
-      const selected = await open({ directory: true, title: "Select ComfyUI root directory" });
+      const selected = await open({ directory: true, title: t("settings.comfyRoot") });
       console.log("[Dialog] ComfyUI root raw return:", selected, typeof selected);
       const dirPath = extractPath(selected);
       console.log("[Dialog] ComfyUI root extracted:", dirPath);
@@ -71,7 +101,7 @@ export default function Settings() {
 
   const handlePickModelBaseDir = async () => {
     try {
-      const selected = await open({ directory: true, title: "Select model base directory" });
+      const selected = await open({ directory: true, title: t("settings.modelBase") });
       console.log("[Dialog] Model base dir raw return:", selected, typeof selected);
       const dirPath = extractPath(selected);
       console.log("[Dialog] Model base dir extracted:", dirPath);
@@ -114,19 +144,94 @@ export default function Settings() {
   };
 
   return (
-    <div className="h-full p-4">
-      <Tabs defaultValue="general" className="h-full flex flex-col">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
+    <div className="flex h-full min-h-0 flex-col p-4">
+      <Tabs defaultValue="general" className="flex h-full min-h-0 flex-col">
+        <TabsList className="w-full justify-start rounded-xl border border-border/70 bg-card/70 p-1 shadow-sm">
+          <TabsTrigger value="general">{t("settings.general")}</TabsTrigger>
           <TabsTrigger value="comfyui">ComfyUI</TabsTrigger>
-          <TabsTrigger value="directories">Directories</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
+          <TabsTrigger value="directories">{t("settings.directories")}</TabsTrigger>
+          <TabsTrigger value="rules">{t("settings.rules")}</TabsTrigger>
         </TabsList>
 
-        <ScrollArea className="flex-1 mt-4">
-          <TabsContent value="general" className="space-y-6 pr-4">
-            <SettingGroup title="Download Settings">
-              <SettingRow label="Max Concurrent Downloads">
+        <ScrollArea className="mt-2 min-h-0 flex-1 pr-1">
+          <TabsContent value="general" className="space-y-3 pr-3 pb-3">
+            <SettingGroup title={t("settings.appearance")}>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-2.5">
+                  {THEME_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+                    const active = settings.theme === option.value;
+                    const optionLabel = option.value === "light"
+                      ? t("settings.themeLight")
+                      : option.value === "dark"
+                        ? t("settings.themeDark")
+                        : t("settings.themeSystem");
+                    const optionDescription = option.value === "light"
+                      ? t("settings.themeLightDesc")
+                      : option.value === "dark"
+                        ? t("settings.themeDarkDesc")
+                        : t("settings.themeSystemDesc");
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updateSetting("theme", option.value)}
+                        className={cn(
+                          "flex min-w-[200px] flex-1 items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                          active
+                              ? "border-primary/40 bg-primary/8 shadow-sm"
+                              : "border-border/70 bg-background/70 hover:bg-muted/50"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "mt-0.5 rounded-lg border p-1.5",
+                            active
+                              ? "border-primary/30 bg-primary/12 text-primary"
+                              : "border-border bg-muted text-muted-foreground"
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium">{optionLabel}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {optionDescription}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <SettingRow label={t("settings.language")}>
+                  <Select
+                    value={settings.language}
+                    onValueChange={(value) => {
+                      if (value) void updateSetting("language", value);
+                    }}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">{t("settings.languageEnglish")}</SelectItem>
+                      <SelectItem value="zh">{t("settings.languageChinese")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.themeHelp")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.languageHelp")}
+                </p>
+              </div>
+            </SettingGroup>
+
+            <Separator className="my-1" />
+
+            <SettingGroup title={t("settings.downloadSettings")}>
+              <SettingRow label={t("settings.maxConcurrent")}>
                 <Input
                   type="number"
                   value={settings.aria2_max_concurrent}
@@ -136,7 +241,7 @@ export default function Settings() {
                   max={16}
                 />
               </SettingRow>
-              <SettingRow label="Max Connections Per Server">
+              <SettingRow label={t("settings.maxConnections")}>
                 <Input
                   type="number"
                   value={settings.aria2_max_connections}
@@ -146,7 +251,7 @@ export default function Settings() {
                   max={64}
                 />
               </SettingRow>
-              <SettingRow label="Duplicate File Strategy">
+              <SettingRow label={t("settings.duplicateStrategy")}>
                 <Select
                   value={settings.duplicate_strategy}
                   onValueChange={(v) => { if (v) updateSetting("duplicate_strategy", v); }}
@@ -155,13 +260,13 @@ export default function Settings() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="skip">Skip</SelectItem>
-                    <SelectItem value="rename">Rename</SelectItem>
-                    <SelectItem value="overwrite">Overwrite</SelectItem>
+                    <SelectItem value="skip">{t("settings.duplicate.skip")}</SelectItem>
+                    <SelectItem value="rename">{t("settings.duplicate.rename")}</SelectItem>
+                    <SelectItem value="overwrite">{t("settings.duplicate.overwrite")}</SelectItem>
                   </SelectContent>
                 </Select>
               </SettingRow>
-              <SettingRow label="Speed Limit (0 = unlimited)">
+              <SettingRow label={t("settings.speedLimit")}>
                 <Input
                   type="number"
                   value={settings.download_speed_limit}
@@ -173,21 +278,21 @@ export default function Settings() {
               </SettingRow>
             </SettingGroup>
 
-            <Separator />
+            <Separator className="my-1" />
 
-            <SettingGroup title="Network">
-              <SettingRow label="Proxy (HTTP/SOCKS5)">
+            <SettingGroup title={t("settings.network")}>
+              <SettingRow label={t("settings.proxy")}>
                 <Input
-                  placeholder="e.g. http://127.0.0.1:7890"
+                  placeholder={t("settings.placeholder.proxy")}
                   value={settings.proxy}
                   onChange={(e) => updateSetting("proxy", e.target.value)}
                   className="w-72"
                 />
               </SettingRow>
-              <SettingRow label="Civitai API Token">
+              <SettingRow label={t("settings.civitaiToken")}>
                 <Input
                   type="password"
-                  placeholder="Your Civitai API token"
+                  placeholder={t("settings.placeholder.token")}
                   value={settings.civitai_api_token}
                   onChange={(e) => updateSetting("civitai_api_token", e.target.value)}
                   className="w-72"
@@ -196,22 +301,22 @@ export default function Settings() {
             </SettingGroup>
           </TabsContent>
 
-          <TabsContent value="comfyui" className="space-y-6 pr-4">
-            <SettingGroup title="ComfyUI Configuration">
-              <SettingRow label="ComfyUI Root Directory">
+          <TabsContent value="comfyui" className="space-y-3 pr-3 pb-3">
+            <SettingGroup title={t("settings.comfyConfig")}>
+              <SettingRow label={t("settings.comfyRoot")}>
                 <div className="flex items-center gap-2">
                   <Input
                     value={settings.comfyui_root}
                     onChange={(e) => updateSetting("comfyui_root", e.target.value)}
                     className="w-80"
-                    placeholder="D:/path/to/ComfyUI"
+                    placeholder={t("settings.placeholder.comfyRoot")}
                   />
                   <Button variant="outline" size="icon" onClick={handlePickComfyRoot}>
                     <FolderOpen className="h-4 w-4" />
                   </Button>
                 </div>
               </SettingRow>
-              <SettingRow label="ComfyUI Server Address">
+              <SettingRow label={t("settings.comfyServer")}>
                 <div className="flex items-center gap-2">
                   <Input
                     value={settings.comfyui_server}
@@ -220,14 +325,14 @@ export default function Settings() {
                   />
                   <Button variant="outline" size="sm" onClick={handleCheckComfyUI} disabled={checking}>
                     {checking ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
-                    Check
+                    {t("common.check")}
                   </Button>
                   {comfyStatus && (
                     <span className="text-xs text-muted-foreground">{comfyStatus}</span>
                   )}
                 </div>
               </SettingRow>
-              <SettingRow label="Auto-verify after download">
+              <SettingRow label={t("settings.autoVerify")}>
                 <Switch
                   checked={settings.auto_verify_comfyui === "true"}
                   onCheckedChange={(v) =>
@@ -238,13 +343,12 @@ export default function Settings() {
             </SettingGroup>
           </TabsContent>
 
-          <TabsContent value="directories" className="space-y-6 pr-4">
-            <SettingGroup title="Model Base Directory">
+          <TabsContent value="directories" className="space-y-3 pr-3 pb-3">
+            <SettingGroup title={t("settings.modelBase")}>
               <p className="text-xs text-muted-foreground">
-                The root directory containing your model subdirectories (e.g. checkpoints, loras, vae).
-                Downloads will be placed into the matching subdirectory automatically.
+                {t("settings.modelBaseHelp")}
               </p>
-              <SettingRow label="Model Base Directory">
+              <SettingRow label={t("settings.modelBase")}>
                 <div className="flex items-center gap-2">
                   <Input
                     value={settings.model_base_dir}
@@ -253,7 +357,7 @@ export default function Settings() {
                     placeholder={
                       settings.comfyui_root
                         ? `Auto: ${settings.comfyui_root}\\models`
-                        : "e.g. C:\\ComfyUI\\ComfyUI\\models"
+                        : t("settings.placeholder.modelBase")
                     }
                   />
                   <Button variant="outline" size="icon" onClick={handlePickModelBaseDir}>
@@ -262,12 +366,12 @@ export default function Settings() {
                 </div>
               </SettingRow>
               {!settings.model_base_dir && settings.comfyui_root && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
                   <span>
-                    Auto-detected from ComfyUI root: <code>{settings.comfyui_root}\models</code>
+                    {t("settings.autoDetectedBaseDir", { path: `${settings.comfyui_root}\\models` })}
                   </span>
                   <Button variant="outline" size="sm" onClick={handleApplyDerivedBaseDir}>
-                    Apply
+                    {t("common.apply")}
                   </Button>
                 </div>
               )}
@@ -276,14 +380,14 @@ export default function Settings() {
             {detectedSubdirs.length > 0 && (
               <>
                 <Separator />
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">Detected Subdirectories</h3>
+                <div className="rounded-2xl border border-border/70 bg-card/75 p-4 shadow-sm space-y-2">
+                  <h3 className="text-sm font-medium">{t("settings.detectedSubdirs")}</h3>
                   <p className="text-xs text-muted-foreground">
-                    These directories were found under your model base directory. They will appear in the download dropdown.
+                    {t("settings.detectedSubdirsHelp")}
                   </p>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {detectedSubdirs.map((d) => (
-                      <Badge key={d} variant="secondary">
+                      <Badge key={d} variant="outline" className="border-border/70 bg-background/70">
                         {d}
                       </Badge>
                     ))}
@@ -294,40 +398,40 @@ export default function Settings() {
 
             {effectiveBaseDir && detectedSubdirs.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No subdirectories found. Check that the path is correct.
+                {t("settings.noSubdirs")}
               </p>
             )}
           </TabsContent>
 
-          <TabsContent value="rules" className="space-y-4 pr-4">
-            <h3 className="text-sm font-medium">Keyword Rules</h3>
-            <p className="text-xs text-muted-foreground">
-              When a filename or URL contains the keyword, the model type will be auto-suggested.
-            </p>
+          <TabsContent value="rules" className="space-y-3 pr-3 pb-3">
+            <SettingGroup title={t("settings.keywordRules")}>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.keywordRulesHelp")}
+              </p>
 
-            <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2">
               <div>
-                <Label className="text-xs">Type</Label>
+                <Label className="text-xs">{t("settings.ruleType")}</Label>
                 <Select value={newRuleType} onValueChange={(v) => { if (v) setNewRuleType(v as "filename" | "url"); }}>
                   <SelectTrigger className="w-[120px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="filename">Filename</SelectItem>
-                    <SelectItem value="url">URL</SelectItem>
+                    <SelectItem value="filename">{t("settings.ruleType.filename")}</SelectItem>
+                    <SelectItem value="url">{t("settings.ruleType.url")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex-1">
-                <Label className="text-xs">Keyword</Label>
+                <Label className="text-xs">{t("settings.ruleKeyword")}</Label>
                 <Input
-                  placeholder="e.g. flux, sdxl"
+                  placeholder={t("settings.placeholder.keyword")}
                   value={newKeyword}
                   onChange={(e) => setNewKeyword(e.target.value)}
                 />
               </div>
               <div>
-                <Label className="text-xs">Model Type</Label>
+                <Label className="text-xs">{t("settings.ruleModelType")}</Label>
                 <Select value={newModelType} onValueChange={(v) => { if (v) setNewModelType(v); }}>
                   <SelectTrigger className="w-[160px]">
                     <SelectValue />
@@ -343,40 +447,46 @@ export default function Settings() {
               </div>
               <Button onClick={handleAddRule} disabled={!newKeyword.trim()}>
                 <Plus className="mr-1 h-4 w-4" />
-                Add
+                {t("common.add")}
               </Button>
-            </div>
+              </div>
 
-            <Separator />
+              <Separator className="my-1" />
 
-            <div className="space-y-2">
-              {rules.length === 0 && (
-                <p className="text-sm text-muted-foreground">No custom rules defined</p>
-              )}
-              {rules.map((rule) => (
-                <div key={rule.id} className="flex items-center gap-2 rounded border p-2">
-                  <Badge variant="outline" className="text-xs">
-                    {rule.rule_type}
-                  </Badge>
-                  <span className="flex-1 text-sm font-mono">{rule.keyword}</span>
-                  <Badge variant="secondary">{rule.model_type}</Badge>
-                  <Switch
-                    checked={rule.enabled}
-                    onCheckedChange={(v) =>
-                      updateRule({ ...rule, enabled: v })
-                    }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => deleteRule(rule.id)}
+              <div className="space-y-1.5">
+                {rules.length === 0 && (
+                  <p className="text-sm text-muted-foreground">{t("settings.noRules")}</p>
+                )}
+                {rules.map((rule) => (
+                  <div
+                    key={rule.id}
+                    className="flex items-center gap-2 rounded-xl border border-border/70 bg-background/60 p-3 shadow-sm"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+                    <Badge variant="outline" className="border-border/70 bg-card text-xs">
+                      {rule.rule_type}
+                    </Badge>
+                    <span className="flex-1 text-sm font-mono">{rule.keyword}</span>
+                    <Badge variant="outline" className="border-primary/20 bg-primary/8 text-primary">
+                      {rule.model_type}
+                    </Badge>
+                    <Switch
+                      checked={rule.enabled}
+                      onCheckedChange={(v) =>
+                        updateRule({ ...rule, enabled: v })
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => deleteRule(rule.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </SettingGroup>
           </TabsContent>
         </ScrollArea>
       </Tabs>
@@ -392,9 +502,9 @@ function SettingGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-medium">{title}</h3>
-      <div className="space-y-3">{children}</div>
+    <div className="space-y-2 rounded-xl border border-border/70 bg-card/75 p-2.5 shadow-sm">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="space-y-1.5">{children}</div>
     </div>
   );
 }
@@ -407,9 +517,9 @@ function SettingRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <Label className="text-sm min-w-[200px]">{label}</Label>
-      <div className="flex items-center gap-2">{children}</div>
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/55 px-2.5 py-1.5">
+      <Label className="min-w-[156px] text-[13px] leading-5">{label}</Label>
+      <div className="flex items-center gap-1.5">{children}</div>
     </div>
   );
 }
