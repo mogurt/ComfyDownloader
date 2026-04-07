@@ -328,7 +328,6 @@ export default function TaskList() {
                 task={task}
                 selected={isTaskSelected(task.id)}
                 onToggleSelected={() => toggleTaskSelection(task.id)}
-                onOpenDetails={() => setSelectedTask(task.id)}
                 onContextMenu={(event) => {
                   event.preventDefault();
                   if (!selectedTaskIds.includes(task.id)) {

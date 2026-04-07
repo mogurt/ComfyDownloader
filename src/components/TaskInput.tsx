@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -8,6 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Download, Loader2, FolderOpen } from "lucide-react";
 import { useTaskStore } from "@/stores/taskStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -321,6 +328,27 @@ export default function TaskInput() {
           <span>{recommendation}</span>
         </div>
       )}
+      <TooltipProvider>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Tooltip>
+            <TooltipTrigger render={<div />}>
+              <Badge
+                variant={baseDir ? "outline" : "destructive"}
+                className="max-w-full gap-1.5 px-2 py-1 text-xs"
+              >
+                <FolderOpen className="h-3 w-3 shrink-0" />
+                <span className="shrink-0 font-medium">{t("taskInput.baseDir")}</span>
+                <span className="max-w-[380px] truncate">
+                  {baseDir || t("taskInput.baseDirMissing")}
+                </span>
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              {baseDir || t("taskInput.baseDirMissing")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </TooltipProvider>
       {resolvedTargetDir && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="font-medium">{t("taskInput.target")}</span>

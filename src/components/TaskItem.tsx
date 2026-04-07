@@ -3,7 +3,6 @@ import type { MouseEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { useTaskStore } from "@/stores/taskStore";
 import type { DownloadTask } from "@/lib/types";
 import {
   formatEta,
@@ -21,7 +20,6 @@ interface Props {
   task: DownloadTask;
   selected: boolean;
   onToggleSelected: () => void;
-  onOpenDetails: () => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -29,11 +27,9 @@ export default function TaskItem({
   task,
   selected,
   onToggleSelected,
-  onOpenDetails,
   onContextMenu,
 }: Props) {
   const { t } = useI18n();
-  const { setSelectedTask } = useTaskStore();
   const displayStatus = getDisplayTaskStatus(task);
   const statusMeta = getTaskStatusMeta(t)[displayStatus];
   const StatusIcon = statusMeta.icon;
@@ -52,10 +48,6 @@ export default function TaskItem({
       onContextMenu={onContextMenu}
       onClick={() => {
         onToggleSelected();
-      }}
-      onDoubleClick={() => {
-        setSelectedTask(task.id);
-        onOpenDetails();
       }}
     >
       <label
