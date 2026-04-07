@@ -132,6 +132,8 @@ const translations = {
     "taskItem.openDirectory": "Open download directory",
     "taskItem.deleteRecord": "Delete record",
     "taskItem.allocating": "Allocating file space {{progress}}%",
+    "taskItem.selectTask": "Select task",
+    "taskItem.viewDetails": "View details",
 
     "taskDetail.title": "Task Details",
     "taskDetail.downloaded": "Downloaded",
@@ -168,6 +170,7 @@ const translations = {
     "logs.filter.app": "App",
     "logs.filter.aria2": "aria2",
     "logs.emptyFiltered": "No logs match the current filters",
+    "taskContextMenu.selectedCount": "{{count}} selected",
 
     "batchImport.title": "Batch Import URLs",
     "batchImport.noBaseDir": "Model base directory not set. Configure it in Settings first.",
@@ -342,6 +345,8 @@ const translations = {
     "taskItem.openDirectory": "打开下载目录",
     "taskItem.deleteRecord": "删除记录",
     "taskItem.allocating": "正在预分配文件空间 {{progress}}%",
+    "taskItem.selectTask": "选择任务",
+    "taskItem.viewDetails": "查看详情",
 
     "taskDetail.title": "任务详情",
     "taskDetail.downloaded": "已下载",
@@ -378,6 +383,7 @@ const translations = {
     "logs.filter.app": "应用",
     "logs.filter.aria2": "aria2",
     "logs.emptyFiltered": "当前筛选条件下没有日志",
+    "taskContextMenu.selectedCount": "已选择 {{count}} 项",
 
     "batchImport.title": "批量导入链接",
     "batchImport.noBaseDir": "模型基础目录未设置，请先到设置中配置。",

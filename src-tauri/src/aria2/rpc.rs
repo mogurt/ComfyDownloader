@@ -319,8 +319,11 @@ impl Aria2Rpc {
     }
 
     pub async fn poll_all(&self) -> Result<Vec<Aria2Status>, String> {
-        let (mut active, mut waiting) =
-            tokio::try_join!(self.tell_active(), self.tell_waiting(0, 100))?;
+        // Keep these RPC calls sequential on the same websocket connection.
+        // Running them concurrently can leave polling stuck if one request
+        // times out while another is still in flight.
+        let mut active = self.tell_active().await?;
+        let mut waiting = self.tell_waiting(0, 100).await?;
 
         active.append(&mut waiting);
         Ok(active)

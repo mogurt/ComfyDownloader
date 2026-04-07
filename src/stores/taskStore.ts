@@ -49,6 +49,25 @@ async function getDb(): Promise<Database> {
   return db;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 interface TaskLogMeta {
   gid?: string | null;
   taskId?: number | null;
@@ -59,16 +78,14 @@ interface TaskState {
   logs: LogEntry[];
   aria2Ready: boolean;
   selectedTaskId: number | null;
-  selectionMode: boolean;
   selectedTaskIds: number[];
   logIdCounter: number;
 
   setAria2Ready: (ready: boolean) => void;
   setSelectedTask: (id: number | null) => void;
-  setSelectionMode: (enabled: boolean) => void;
+  setSelectedTaskIds: (ids: number[]) => void;
   toggleTaskSelection: (id: number) => void;
   clearTaskSelection: () => void;
-  selectVisibleTasks: (ids: number[]) => void;
   toggleVisibleTasks: (ids: number[]) => void;
   isTaskSelected: (id: number) => boolean;
   addLog: (level: LogEntry["level"], message: string) => void;
@@ -111,7 +128,6 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   logs: [],
   aria2Ready: false,
   selectedTaskId: null,
-  selectionMode: false,
   selectedTaskIds: [],
   logIdCounter: 0,
 
@@ -119,11 +135,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   setSelectedTask: (id) => set({ selectedTaskId: id }),
 
-  setSelectionMode: (enabled) => set((s) => ({
-    selectionMode: enabled,
-    selectedTaskId: enabled ? null : s.selectedTaskId,
-    selectedTaskIds: enabled ? s.selectedTaskIds : [],
-  })),
+  setSelectedTaskIds: (ids) => set({ selectedTaskIds: Array.from(new Set(ids)) }),
 
   toggleTaskSelection: (id) => set((s) => ({
     selectedTaskIds: s.selectedTaskIds.includes(id)
@@ -132,10 +144,6 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   })),
 
   clearTaskSelection: () => set({ selectedTaskIds: [] }),
-
-  selectVisibleTasks: (ids) => set((s) => ({
-    selectedTaskIds: Array.from(new Set([...s.selectedTaskIds, ...ids])),
-  })),
 
   toggleVisibleTasks: (ids) => set((s) => {
     const allSelected = ids.length > 0 && ids.every((id) => s.selectedTaskIds.includes(id));
@@ -610,7 +618,32 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (trackedTasks.length === 0) return;
 
     try {
-      const allDownloads = await api.getActiveDownloads();
+      let allDownloads: Aria2Status[];
+      try {
+        allDownloads = await withTimeout(
+          api.getActiveDownloads(),
+          10000,
+          "get_active_downloads"
+        );
+      } catch (bulkError) {
+        console.warn("[Poll] Bulk aria2 polling failed, falling back to per-task status:", String(bulkError));
+        const fallbackStatuses: Aria2Status[] = [];
+        for (const task of trackedTasks) {
+          try {
+            fallbackStatuses.push(
+              await withTimeout(
+                api.getDownloadStatus(task.gid),
+                8000,
+                `get_download_status ${task.gid}`
+              )
+            );
+          } catch (fallbackError) {
+            console.warn(`[Poll] Failed to fetch status for ${task.gid}:`, String(fallbackError));
+          }
+        }
+        allDownloads = fallbackStatuses;
+      }
+
       const statusMap = new Map<string, Aria2Status>();
       for (const status of allDownloads) {
         if (status.gid) statusMap.set(status.gid, status);
