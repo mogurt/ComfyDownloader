@@ -120,7 +120,8 @@ export default function BatchImport({ open: isOpen, onClose }: Props) {
         const result = await api.parseDownloadUrl(
           url,
           settings.proxy || undefined,
-          settings.civitai_api_token || undefined
+          settings.civitai_api_token || undefined,
+          settings.huggingface_token || undefined
         );
 
         let matchedSubdir: string | null = null;

@@ -34,12 +34,14 @@ export async function isAria2Ready(): Promise<boolean> {
 export async function parseDownloadUrl(
   url: string,
   proxy?: string,
-  civitaiToken?: string
+  civitaiToken?: string,
+  huggingfaceToken?: string
 ): Promise<ParseResult> {
   return invoke("parse_download_url", {
     url,
     proxy: proxy || null,
     civitaiToken: civitaiToken || null,
+    huggingfaceToken: huggingfaceToken || null,
   });
 }
 

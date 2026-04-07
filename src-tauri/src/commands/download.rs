@@ -54,11 +54,13 @@ pub async fn parse_download_url(
     url: String,
     proxy: Option<String>,
     civitai_token: Option<String>,
+    huggingface_token: Option<String>,
 ) -> Result<ParseResult, String> {
     url_parser::parse_url(
         &url,
         proxy.as_deref(),
         civitai_token.as_deref(),
+        huggingface_token.as_deref(),
     )
     .await
 }

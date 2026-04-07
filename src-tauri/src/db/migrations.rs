@@ -81,5 +81,13 @@ pub fn get_migrations() -> Vec<Migration> {
         "#,
         kind: MigrationKind::Up,
     },
+    Migration {
+        version: 5,
+        description: "add huggingface token setting",
+        sql: r#"
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('huggingface_token', '');
+        "#,
+        kind: MigrationKind::Up,
+    },
     ]
 }

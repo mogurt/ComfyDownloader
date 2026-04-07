@@ -1,8 +1,13 @@
 use super::ParseResult;
 use log::info;
+use reqwest::header::AUTHORIZATION;
 use url::Url;
 
-pub async fn parse(raw_url: &str, proxy: Option<&str>) -> Result<ParseResult, String> {
+pub async fn parse(
+    raw_url: &str,
+    proxy: Option<&str>,
+    token: Option<&str>,
+) -> Result<ParseResult, String> {
     info!("Parsing HuggingFace URL: {}", raw_url);
 
     let url = Url::parse(raw_url).map_err(|e| format!("Invalid URL: {}", e))?;
@@ -13,7 +18,7 @@ pub async fn parse(raw_url: &str, proxy: Option<&str>) -> Result<ParseResult, St
 
     let suggested_type = guess_type(&filename, path);
 
-    let file_size = fetch_content_length(raw_url, proxy).await.ok();
+    let file_size = fetch_content_length(raw_url, proxy, token).await.ok();
 
     Ok(ParseResult {
         filename,
@@ -76,7 +81,11 @@ fn guess_type(filename: &str, path: &str) -> Option<String> {
     }
 }
 
-async fn fetch_content_length(url: &str, proxy: Option<&str>) -> Result<u64, String> {
+async fn fetch_content_length(
+    url: &str,
+    proxy: Option<&str>,
+    token: Option<&str>,
+) -> Result<u64, String> {
     let mut builder = reqwest::Client::builder();
     if let Some(p) = proxy {
         if !p.is_empty() {
@@ -86,8 +95,14 @@ async fn fetch_content_length(url: &str, proxy: Option<&str>) -> Result<u64, Str
     }
     let client = builder.build().map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let resp = client
-        .head(url)
+    let mut request = client.head(url);
+    if let Some(t) = token {
+        if !t.is_empty() {
+            request = request.header(AUTHORIZATION, format!("Bearer {}", t));
+        }
+    }
+
+    let resp = request
         .send()
         .await
         .map_err(|e| format!("HEAD request failed: {}", e))?;

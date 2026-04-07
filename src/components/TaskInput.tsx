@@ -93,7 +93,8 @@ export default function TaskInput() {
       const result = await api.parseDownloadUrl(
         trimmed,
         settings.proxy || undefined,
-        settings.civitai_api_token || undefined
+        settings.civitai_api_token || undefined,
+        settings.huggingface_token || undefined
       );
       setFilename(result.filename);
       setParsedUrl(trimmed);
@@ -124,7 +125,7 @@ export default function TaskInput() {
     } finally {
       setParsing(false);
     }
-  }, [parsedUrl, settings.proxy, settings.civitai_api_token, subdirs, rules, addLog, t]);
+  }, [parsedUrl, settings.proxy, settings.civitai_api_token, settings.huggingface_token, subdirs, rules, addLog, t]);
 
   const handleUrlChange = (value: string) => {
     setUrl(value);

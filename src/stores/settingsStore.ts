@@ -40,6 +40,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     aria2_max_connections: "16",
     proxy: "",
     civitai_api_token: "",
+    huggingface_token: "",
     duplicate_strategy: "skip",
     download_speed_limit: "0",
     auto_verify_comfyui: "false",

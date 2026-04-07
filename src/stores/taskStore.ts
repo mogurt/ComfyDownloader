@@ -10,6 +10,7 @@ import type {
 import Database from "@tauri-apps/plugin-sql";
 import * as api from "@/lib/api";
 import { translate } from "@/lib/i18n";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 let db: Database | null = null;
 
@@ -40,6 +41,16 @@ function matchesTaskGid(taskGid: string | null | undefined, reportedGid: string)
   const normalizedTaskGid = taskGid.toLowerCase();
   const normalizedReportedGid = reportedGid.toLowerCase();
   return normalizedTaskGid === normalizedReportedGid || normalizedTaskGid.startsWith(normalizedReportedGid);
+}
+
+function isHuggingFaceUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.host.toLowerCase();
+    return host.includes("huggingface.co") || host.includes("hf-mirror.com");
+  } catch {
+    return false;
+  }
 }
 
 async function getDb(): Promise<Database> {
@@ -363,6 +374,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const store = get();
     try {
       const headers: string[] = [];
+      const settings = useSettingsStore.getState().settings;
+      if (isHuggingFaceUrl(task.url) && settings.huggingface_token.trim()) {
+        headers.push(`Authorization: Bearer ${settings.huggingface_token.trim()}`);
+      }
       const gid = await api.createDownload(
         task.url,
         task.target_dir,

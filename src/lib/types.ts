@@ -74,6 +74,7 @@ export interface AppSettings {
   aria2_max_connections: string;
   proxy: string;
   civitai_api_token: string;
+  huggingface_token: string;
   duplicate_strategy: string;
   download_speed_limit: string;
   auto_verify_comfyui: string;
