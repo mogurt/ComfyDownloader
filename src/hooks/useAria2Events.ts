@@ -5,7 +5,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { translate } from "@/lib/i18n";
 
 function parseAllocationProgress(message: string): Array<{ gid: string; progress: number }> {
-  const matches = message.matchAll(/FileAlloc:#([0-9a-f]{6,16})[^\]]*\((\d+)%\)/gi);
+  const matches = message.matchAll(/FileAlloc:#([0-9a-f]{6,16})[^\]]*?(\d+)(?:%|\.)/gi);
   const latestByGid = new Map<string, number>();
   for (const match of matches) {
     const gid = match[1];

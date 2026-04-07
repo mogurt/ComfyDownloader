@@ -672,7 +672,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           const speed = parseInt(String(status.downloadSpeed ?? "0"), 10);
           const progress = total > 0 ? (completed / total) * 100 : 0;
           const aria2Status = String(status.status ?? "");
-          const hasTransferStarted = completed > 0 || speed > 0;
+          const isAllocating = task.runtime_phase === "allocating" && aria2Status === "active" && speed <= 0;
+          const hasTransferStarted = speed > 0 || (completed > 0 && !isAllocating);
           const lastActiveAt = completed > (task.downloaded_size ?? 0) || speed > 0
             ? new Date().toISOString()
             : task.last_active_at ?? null;
