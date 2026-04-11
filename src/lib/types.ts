@@ -118,6 +118,45 @@ export interface TaskSummary {
   completed: number;
 }
 
+// --- Hugging Face Search ---
+
+export interface HfModelInfo {
+  model_id: string;
+  author: string | null;
+  tags: string[];
+  downloads: number;
+  likes: number;
+  last_modified: string | null;
+  pipeline_tag: string | null;
+  private: boolean;
+  library_name: string | null;
+}
+
+export interface HfSearchResponse {
+  models: HfModelInfo[];
+  has_more: boolean;
+}
+
+export interface HfFileEntry {
+  filename: string;
+  size: number | null;
+  download_url: string;
+}
+
+export interface HfFilesResponse {
+  model_id: string;
+  files: HfFileEntry[];
+}
+
+export interface HfSearchParams {
+  query: string;
+  filter?: string;
+  sort?: string;
+  direction?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface Aria2Status {
   gid: string;
   status: string;

@@ -7,13 +7,14 @@ import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import * as api from "@/lib/api";
 import Home from "@/pages/Home";
+import Search from "@/pages/Search";
 import Settings from "@/pages/Settings";
-import { Settings as SettingsIcon, Download } from "lucide-react";
+import { Settings as SettingsIcon, Download, Search as SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function App() {
   const { t } = useI18n();
-  const [page, setPage] = useState<"home" | "settings">("home");
+  const [page, setPage] = useState<"home" | "search" | "settings">("home");
   const loadTasks = useTaskStore((s) => s.loadTasks);
   const resetStaleTasks = useTaskStore((s) => s.resetStaleTasks);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -75,6 +76,14 @@ export default function App() {
               {t("nav.downloads")}
             </Button>
             <Button
+              variant={page === "search" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setPage("search")}
+            >
+              <SearchIcon className="mr-1 h-4 w-4" />
+              {t("nav.search")}
+            </Button>
+            <Button
               variant={page === "settings" ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setPage("settings")}
@@ -85,7 +94,7 @@ export default function App() {
           </div>
         </header>
         <main className="flex-1 overflow-hidden">
-          {page === "home" ? <Home /> : <Settings />}
+          {page === "home" ? <Home /> : page === "search" ? <Search /> : <Settings />}
         </main>
       </div>
     </TooltipProvider>

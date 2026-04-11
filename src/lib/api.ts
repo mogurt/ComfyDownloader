@@ -4,6 +4,9 @@ import type {
   ModelTypeInfo,
   DirMapping,
   Aria2Status,
+  HfSearchResponse,
+  HfFilesResponse,
+  HfSearchParams,
 } from "./types";
 
 /**
@@ -148,6 +151,37 @@ export async function resolveRelativeSubdir(
 
 export async function openDirectory(path: string): Promise<void> {
   return invoke("open_directory", { path });
+}
+
+// --- Hugging Face Search ---
+
+export async function searchHfModels(
+  params: HfSearchParams,
+  proxy?: string,
+  token?: string
+): Promise<HfSearchResponse> {
+  return invoke("search_hf_models", {
+    query: params.query,
+    filter: params.filter || null,
+    sort: params.sort || null,
+    direction: params.direction || null,
+    limit: params.limit ?? 20,
+    offset: params.offset ?? 0,
+    proxy: proxy || null,
+    token: token || null,
+  });
+}
+
+export async function getHfModelFiles(
+  modelId: string,
+  proxy?: string,
+  token?: string
+): Promise<HfFilesResponse> {
+  return invoke("get_hf_model_files", {
+    modelId,
+    proxy: proxy || null,
+    token: token || null,
+  });
 }
 
 const TYPE_TO_DIRNAME: Record<string, string[]> = {
