@@ -68,6 +68,7 @@ fn builtin_suggest(filename: &str, url: &str) -> String {
 
     if filename.to_lowercase().ends_with(".safetensors")
         || filename.to_lowercase().ends_with(".ckpt")
+        || filename.to_lowercase().ends_with(".gguf")
     {
         return "checkpoint".to_string();
     }

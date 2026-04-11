@@ -65,3 +65,4 @@ src-tauri/              # Rust backend
     db/                 # SQLite migrations
   binaries/             # aria2c sidecar binary
 ```
+
