@@ -692,29 +692,31 @@ function DownloadConfirmDialog({
       open={!!pending}
       onOpenChange={(open) => { if (!open) onClose(); }}
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md overflow-hidden">
+        <DialogHeader className="min-w-0">
           <DialogTitle>{t("search.confirmTitle")}</DialogTitle>
-          <DialogDescription>{pending.file.filename}</DialogDescription>
+          <DialogDescription className="truncate" title={pending.file.filename}>
+            {pending.file.filename}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 py-2">
+        <div className="space-y-3 py-2 min-w-0">
           {/* Model info */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-medium">{t("taskDetail.source")}:</span>
-            <span className="truncate">{pending.modelId}</span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+            <span className="font-medium shrink-0">{t("taskDetail.source")}:</span>
+            <span className="truncate" title={pending.modelId}>{pending.modelId}</span>
           </div>
 
           {pending.file.size != null && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-medium">{t("taskDetail.fileSize")}:</span>
+              <span className="font-medium shrink-0">{t("taskDetail.fileSize")}:</span>
               <span>{formatBytes(pending.file.size)}</span>
             </div>
           )}
 
           {/* Suggested type */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-medium">{t("taskDetail.modelType")}:</span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+            <span className="font-medium shrink-0">{t("taskDetail.modelType")}:</span>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
               {pending.suggestedType}
             </Badge>
@@ -746,7 +748,7 @@ function DownloadConfirmDialog({
                     }
                   }}
                 >
-                  <SelectTrigger className="flex-1 h-8 text-xs">
+                  <SelectTrigger className="flex-1 h-8 text-xs min-w-0">
                     <SelectValue placeholder={t("taskInput.subdirectory")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -775,7 +777,7 @@ function DownloadConfirmDialog({
               )}
 
               {isManual && (
-                <span className="flex-1 truncate text-xs text-muted-foreground bg-muted rounded px-2 py-1.5">
+                <span className="flex-1 truncate text-xs text-muted-foreground bg-muted rounded px-2 py-1.5 min-w-0" title={manualDir}>
                   {manualDir}
                 </span>
               )}
@@ -788,9 +790,9 @@ function DownloadConfirmDialog({
 
           {/* Resolved path preview */}
           {resolvedDir && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-medium">{t("taskInput.target")}</span>
-              <span className="truncate flex-1">{resolvedDir}</span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+              <span className="font-medium shrink-0">{t("taskInput.target")}</span>
+              <span className="truncate flex-1 min-w-0" title={resolvedDir}>{resolvedDir}</span>
             </div>
           )}
         </div>
