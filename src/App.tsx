@@ -9,13 +9,17 @@ import * as api from "@/lib/api";
 import Home from "@/pages/Home";
 import Search from "@/pages/Search";
 import Settings from "@/pages/Settings";
-import { Settings as SettingsIcon, Download, Search as SearchIcon } from "lucide-react";
+import Workflow from "@/pages/Workflow";
+import { useSearchStore } from "@/stores/searchStore";
+import { Settings as SettingsIcon, Download, Search as SearchIcon, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export default function App() {
   const { t } = useI18n();
-  const [page, setPage] = useState<"home" | "search" | "settings">("search");
+  const [page, setPage] = useState<"home" | "search" | "workflow" | "settings">("search");
+  const setSearchQuery = useSearchStore((s) => s.setQuery);
+  const triggerSearch = useSearchStore((s) => s.search);
   const loadTasks = useTaskStore((s) => s.loadTasks);
   const resetStaleTasks = useTaskStore((s) => s.resetStaleTasks);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -80,6 +84,14 @@ export default function App() {
               {t("nav.search")}
             </Button>
             <Button
+              variant={page === "workflow" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setPage("workflow")}
+            >
+              <FileJson className="mr-1 h-4 w-4" />
+              {t("nav.workflow")}
+            </Button>
+            <Button
               variant={page === "home" ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setPage("home")}
@@ -103,7 +115,21 @@ export default function App() {
           </div>
         </header>
         <main className="flex-1 overflow-hidden">
-          {page === "home" ? <Home /> : page === "search" ? <Search /> : <Settings />}
+          {page === "home" ? (
+            <Home />
+          ) : page === "search" ? (
+            <Search />
+          ) : page === "workflow" ? (
+            <Workflow
+              onNavigateToSearch={(query) => {
+                setSearchQuery(query);
+                setPage("search");
+                setTimeout(() => triggerSearch(), 100);
+              }}
+            />
+          ) : (
+            <Settings />
+          )}
         </main>
       </div>
     </TooltipProvider>

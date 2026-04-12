@@ -218,6 +218,41 @@ export interface SearchResultItem {
   civitai?: CivitaiModelInfo;
 }
 
+// --- Workflow Parser ---
+
+export interface WorkflowModelRef {
+  filename: string;
+  model_type_hint: string | null;
+  node_type: string | null;
+}
+
+export interface ParseWorkflowResult {
+  models: WorkflowModelRef[];
+  node_count: number;
+  format: string;
+}
+
+export interface ModelLocalStatus {
+  filename: string;
+  found: boolean;
+  found_path: string | null;
+}
+
+export interface WorkflowFileInfo {
+  path: string;
+  filename: string;
+  size: number;
+  modified: string | null;
+}
+
+export interface WorkflowAnalysis {
+  source_name: string;
+  node_count: number;
+  format: string;
+  models: WorkflowModelRef[];
+  local_status: ModelLocalStatus[];
+}
+
 export interface Aria2Status {
   gid: string;
   status: string;
