@@ -11,11 +11,13 @@ import * as api from "@/lib/api";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 export type SortOption = "downloads" | "likes" | "lastModified";
+export type SourceFilter = "all" | "huggingface" | "civitai";
 
 interface SearchState {
   query: string;
   sort: SortOption;
   filter: string;
+  sourceFilter: SourceFilter;
   results: SearchResultItem[];
   loading: boolean;
   loadingMore: boolean;
@@ -34,6 +36,7 @@ interface SearchState {
   setQuery: (query: string) => void;
   setSort: (sort: SortOption) => void;
   setFilter: (filter: string) => void;
+  setSourceFilter: (source: SourceFilter) => void;
   search: () => Promise<void>;
   loadMore: () => Promise<void>;
   reset: () => void;
@@ -98,6 +101,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   query: "",
   sort: "downloads",
   filter: "",
+  sourceFilter: "all",
   results: [],
   loading: false,
   loadingMore: false,
@@ -116,9 +120,10 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   setQuery: (query) => set({ query }),
   setSort: (sort) => set({ sort }),
   setFilter: (filter) => set({ filter }),
+  setSourceFilter: (source) => set({ sourceFilter: source }),
 
   search: async () => {
-    const { query, sort, filter } = get();
+    const { query, sort, filter, sourceFilter } = get();
     if (!query.trim()) return;
 
     set({
@@ -132,37 +137,30 @@ export const useSearchStore = create<SearchState>((set, get) => ({
 
     const settings = useSettingsStore.getState().settings;
     const trimmed = query.trim();
+    const queryHf = sourceFilter === "all" || sourceFilter === "huggingface";
+    const queryCivitai = sourceFilter === "all" || sourceFilter === "civitai";
 
-    const hfParams: HfSearchParams = {
-      query: trimmed,
-      sort,
-      direction: "-1",
-      limit: PAGE_SIZE,
-      offset: 0,
-      filter: filter || undefined,
-    };
+    const promises: [
+      Promise<{ status: "fulfilled"; value: Awaited<ReturnType<typeof api.searchHfModels>> } | { status: "rejected"; reason: unknown }>,
+      Promise<{ status: "fulfilled"; value: Awaited<ReturnType<typeof api.searchCivitaiModels>> } | { status: "rejected"; reason: unknown }>,
+    ] = [
+      queryHf
+        ? api.searchHfModels(
+            { query: trimmed, sort, direction: "-1", limit: PAGE_SIZE, offset: 0, filter: filter || undefined },
+            settings.proxy || undefined,
+            settings.huggingface_token || undefined
+          ).then((v) => ({ status: "fulfilled" as const, value: v }), (reason) => ({ status: "rejected" as const, reason }))
+        : Promise.resolve({ status: "rejected" as const, reason: "skipped" }),
+      queryCivitai
+        ? api.searchCivitaiModels(
+            { query: trimmed, sort: mapCivitaiSortOption(sort), period: "AllTime", limit: PAGE_SIZE, page: 1, types: mapFilterToCivitaiType(filter) },
+            settings.proxy || undefined,
+            settings.civitai_api_token || undefined
+          ).then((v) => ({ status: "fulfilled" as const, value: v }), (reason) => ({ status: "rejected" as const, reason }))
+        : Promise.resolve({ status: "rejected" as const, reason: "skipped" }),
+    ];
 
-    const civitaiParams: CivitaiSearchParams = {
-      query: trimmed,
-      sort: mapCivitaiSortOption(sort),
-      period: "AllTime",
-      limit: PAGE_SIZE,
-      page: 1,
-      types: mapFilterToCivitaiType(filter),
-    };
-
-    const [hfResult, civitaiResult] = await Promise.allSettled([
-      api.searchHfModels(
-        hfParams,
-        settings.proxy || undefined,
-        settings.huggingface_token || undefined
-      ),
-      api.searchCivitaiModels(
-        civitaiParams,
-        settings.proxy || undefined,
-        settings.civitai_api_token || undefined
-      ),
-    ]);
+    const [hfResult, civitaiResult] = await Promise.all(promises);
 
     const unified: SearchResultItem[] = [];
     let hfHasMore = false;
@@ -188,7 +186,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       }
       hfHasMore = hf.has_more;
       hfOffset = hf.models.length;
-    } else {
+    } else if (hfResult.reason !== "skipped") {
       console.warn("HF search failed:", hfResult.reason);
     }
 
@@ -198,7 +196,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         unified.push(mapCivitaiToUnified(m));
       }
       civitaiHasMore = civ.has_more;
-    } else {
+    } else if (civitaiResult.reason !== "skipped") {
       console.warn("Civitai search failed:", civitaiResult.reason);
     }
 
@@ -219,13 +217,16 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       query,
       sort,
       filter,
+      sourceFilter,
       hfOffset,
       hfHasMore,
       civitaiHasMore,
       civitaiPage,
       loadingMore,
     } = get();
-    if ((!hfHasMore && !civitaiHasMore) || loadingMore) return;
+    const canLoadHf = hfHasMore && (sourceFilter === "all" || sourceFilter === "huggingface");
+    const canLoadCivitai = civitaiHasMore && (sourceFilter === "all" || sourceFilter === "civitai");
+    if ((!canLoadHf && !canLoadCivitai) || loadingMore) return;
 
     set({ loadingMore: true });
 
@@ -233,7 +234,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     const trimmed = query.trim();
     const promises: Promise<SearchResultItem[]>[] = [];
 
-    if (hfHasMore) {
+    if (canLoadHf) {
       const hfParams: HfSearchParams = {
         query: trimmed,
         sort,
@@ -278,7 +279,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       );
     }
 
-    if (civitaiHasMore) {
+    if (canLoadCivitai) {
       const civitaiParams: CivitaiSearchParams = {
         query: trimmed,
         sort: mapCivitaiSortOption(sort),
@@ -326,6 +327,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   reset: () =>
     set({
       query: "",
+      sourceFilter: "all",
       results: [],
       hfHasMore: false,
       hfOffset: 0,

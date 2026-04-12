@@ -31,15 +31,24 @@ import {
   HardDrive,
   PackageSearch,
   FolderOpen,
+  ExternalLink,
 } from "lucide-react";
-import { useSearchStore, type SortOption } from "@/stores/searchStore";
+import { useSearchStore, type SortOption, type SourceFilter } from "@/stores/searchStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTaskStore } from "@/stores/taskStore";
 import * as api from "@/lib/api";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { useI18n, translate } from "@/lib/i18n";
 import type { HfFileEntry, SearchResultItem } from "@/lib/types";
+
+function getRepoUrl(item: SearchResultItem): string {
+  if (item.source === "huggingface") {
+    return `https://huggingface.co/${item.id}`;
+  }
+  return `https://civitai.com/models/${item.id}`;
+}
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -107,12 +116,19 @@ interface PendingDownload {
   subdirs: string[];
 }
 
+const SOURCE_OPTIONS: { value: SourceFilter; labelKey: string }[] = [
+  { value: "all", labelKey: "search.source.all" },
+  { value: "huggingface", labelKey: "search.source.huggingface" },
+  { value: "civitai", labelKey: "search.source.civitai" },
+];
+
 export default function Search() {
   const { t } = useI18n();
   const {
     query, setQuery,
     sort, setSort,
     filter, setFilter,
+    sourceFilter, setSourceFilter,
     results, loading, loadingMore, error,
     hfHasMore, civitaiHasMore,
     expandedModelId, modelFiles, loadingFiles,
@@ -156,6 +172,13 @@ export default function Search() {
     }
   };
 
+  const handleSourceChange = (value: SourceFilter) => {
+    setSourceFilter(value);
+    if (query.trim()) {
+      setTimeout(() => useSearchStore.getState().search(), 0);
+    }
+  };
+
   const hasResults = results.length > 0;
   const hasMore = hfHasMore || civitaiHasMore;
   const showEmpty = !loading && !hasResults && !error && !query.trim();
@@ -175,7 +198,9 @@ export default function Search() {
           />
           <Select value={sort} onValueChange={handleSortChange}>
             <SelectTrigger className="w-[160px]">
-              <SelectValue />
+              <span className="truncate">
+                {t(SORT_OPTIONS.find((o) => o.value === sort)?.labelKey as any)}
+              </span>
             </SelectTrigger>
             <SelectContent>
               {SORT_OPTIONS.map((opt) => (
@@ -190,7 +215,9 @@ export default function Search() {
             onValueChange={handleFilterChange}
           >
             <SelectTrigger className="w-[140px]">
-              <SelectValue />
+              <span className="truncate">
+                {t(FILTER_OPTIONS.find((o) => (o.value || "__all__") === (filter || "__all__"))?.labelKey as any)}
+              </span>
             </SelectTrigger>
             <SelectContent>
               {FILTER_OPTIONS.map((opt) => (
@@ -211,6 +238,23 @@ export default function Search() {
             )}
             {t("search.button")}
           </Button>
+        </div>
+
+        {/* Source toggle */}
+        <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5 w-fit">
+          {SOURCE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                sourceFilter === opt.value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => handleSourceChange(opt.value)}
+            >
+              {t(opt.labelKey as any)}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -452,7 +496,18 @@ function ModelCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-1 shrink-0">
+        <div className="flex items-center gap-3 pt-1 shrink-0">
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+            title={getRepoUrl(item)}
+            onClick={(e) => {
+              e.stopPropagation();
+              shellOpen(getRepoUrl(item));
+            }}
+          >
+            <ExternalLink className="h-3 w-3" />
+            {t("search.openRepo")}
+          </span>
           <span className="text-xs text-muted-foreground">
             {expanded ? t("search.hideFiles") : t("search.viewFiles")}
           </span>
