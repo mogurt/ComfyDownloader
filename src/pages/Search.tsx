@@ -32,14 +32,14 @@ import {
   PackageSearch,
   FolderOpen,
 } from "lucide-react";
-import { useSearchStore, type HfSortOption } from "@/stores/searchStore";
+import { useSearchStore, type SortOption } from "@/stores/searchStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTaskStore } from "@/stores/taskStore";
 import * as api from "@/lib/api";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useI18n, translate } from "@/lib/i18n";
-import type { HfModelInfo, HfFileEntry } from "@/lib/types";
+import type { HfFileEntry, SearchResultItem } from "@/lib/types";
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -81,13 +81,18 @@ function isModelFile(filename: string): boolean {
 
 const FILTER_OPTIONS = [
   { value: "", labelKey: "search.filter.all" as const },
+  { value: "checkpoint", labelKey: "search.filter.checkpoint" as const },
+  { value: "lora", labelKey: "search.filter.lora" as const },
+  { value: "vae", labelKey: "search.filter.vae" as const },
+  { value: "embedding", labelKey: "search.filter.embedding" as const },
+  { value: "controlnet", labelKey: "search.filter.controlnet" as const },
+  { value: "upscale_model", labelKey: "search.filter.upscaler" as const },
   { value: "diffusers", labelKey: "search.filter.diffusers" as const },
   { value: "safetensors", labelKey: "search.filter.safetensors" as const },
-  { value: "lora", labelKey: "search.filter.lora" as const },
   { value: "text-to-image", labelKey: "search.filter.textToImage" as const },
 ];
 
-const SORT_OPTIONS: { value: HfSortOption; labelKey: `search.sort.${string}` }[] = [
+const SORT_OPTIONS: { value: SortOption; labelKey: `search.sort.${string}` }[] = [
   { value: "downloads", labelKey: "search.sort.downloads" },
   { value: "likes", labelKey: "search.sort.likes" },
   { value: "lastModified", labelKey: "search.sort.lastModified" },
@@ -96,6 +101,7 @@ const SORT_OPTIONS: { value: HfSortOption; labelKey: `search.sort.${string}` }[]
 interface PendingDownload {
   file: HfFileEntry;
   modelId: string;
+  modelSource: "huggingface" | "civitai";
   suggestedType: string;
   matchedSubdir: string | null;
   subdirs: string[];
@@ -107,9 +113,11 @@ export default function Search() {
     query, setQuery,
     sort, setSort,
     filter, setFilter,
-    results, hasMore, loading, loadingMore, error,
+    results, loading, loadingMore, error,
+    hfHasMore, civitaiHasMore,
     expandedModelId, modelFiles, loadingFiles,
-    search, loadMore, toggleModelFiles,
+    selectedVersions,
+    search, loadMore, toggleModelFiles, selectVersion,
   } = useSearchStore();
 
   const [pendingDownload, setPendingDownload] = useState<PendingDownload | null>(null);
@@ -135,7 +143,7 @@ export default function Search() {
   };
 
   const handleSortChange = (value: string) => {
-    setSort(value as HfSortOption);
+    setSort(value as SortOption);
     if (query.trim()) {
       setTimeout(() => useSearchStore.getState().search(), 0);
     }
@@ -149,6 +157,7 @@ export default function Search() {
   };
 
   const hasResults = results.length > 0;
+  const hasMore = hfHasMore || civitaiHasMore;
   const showEmpty = !loading && !hasResults && !error && !query.trim();
   const showNoResults = !loading && !hasResults && !error && query.trim();
 
@@ -238,14 +247,16 @@ export default function Search() {
 
         {hasResults && (
           <div className="divide-y">
-            {results.map((model) => (
+            {results.map((item) => (
               <ModelCard
-                key={model.model_id}
-                model={model}
-                expanded={expandedModelId === model.model_id}
-                files={modelFiles[model.model_id]}
-                loadingFiles={loadingFiles === model.model_id}
-                onToggle={() => toggleModelFiles(model.model_id)}
+                key={`${item.source}-${item.id}`}
+                item={item}
+                expanded={expandedModelId === item.id}
+                files={modelFiles[item.id]}
+                loadingFiles={loadingFiles === item.id}
+                selectedVersionId={selectedVersions[item.id]}
+                onToggle={() => toggleModelFiles(item.id)}
+                onSelectVersion={(vId) => selectVersion(item.id, vId)}
                 onRequestDownload={setPendingDownload}
               />
             ))}
@@ -280,19 +291,44 @@ export default function Search() {
   );
 }
 
+// ── Source Badge ──
+
+function SourceBadge({ source }: { source: "huggingface" | "civitai" }) {
+  const { t } = useI18n();
+  const isHf = source === "huggingface";
+  return (
+    <Badge
+      variant="outline"
+      className={`text-[10px] px-1.5 py-0 font-medium ${
+        isHf
+          ? "border-blue-400/50 text-blue-600 dark:text-blue-400"
+          : "border-green-400/50 text-green-600 dark:text-green-400"
+      }`}
+    >
+      {isHf ? t("search.source.huggingface") : t("search.source.civitai")}
+    </Badge>
+  );
+}
+
+// ── Model Card ──
+
 function ModelCard({
-  model,
+  item,
   expanded,
   files,
   loadingFiles,
+  selectedVersionId,
   onToggle,
+  onSelectVersion,
   onRequestDownload,
 }: {
-  model: HfModelInfo;
+  item: SearchResultItem;
   expanded: boolean;
   files?: HfFileEntry[];
   loadingFiles: boolean;
+  selectedVersionId?: number;
   onToggle: () => void;
+  onSelectVersion: (versionId: number) => void;
   onRequestDownload: (p: PendingDownload) => void;
 }) {
   const { t } = useI18n();
@@ -300,18 +336,39 @@ function ModelCard({
   const modelFiles = files?.filter((f) => isModelFile(f.filename));
   const otherFiles = files?.filter((f) => !isModelFile(f.filename));
 
+  const isCivitai = item.source === "civitai";
+  const civitai = item.civitai;
+  const hf = item.hf;
+
+  const versions = civitai?.model_versions ?? [];
+  const selectedVer = versions.find((v) => v.id === selectedVersionId) ?? versions[0];
+
   return (
     <div className="group">
       <button
         className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50"
         onClick={onToggle}
       >
+        {/* Civitai thumbnail */}
+        {isCivitai && item.thumbnail_url && (
+          <img
+            src={item.thumbnail_url}
+            alt=""
+            className="h-14 w-14 rounded-md object-cover shrink-0 bg-muted"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2">
+            <SourceBadge source={item.source} />
             <span className="font-semibold text-sm truncate">
-              {model.model_id}
+              {item.name}
             </span>
-            {model.private && (
+            {hf?.private && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                 Private
               </Badge>
@@ -319,45 +376,65 @@ function ModelCard({
           </div>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {model.author && (
+            {item.author && (
               <span className="flex items-center gap-1">
                 <User className="h-3 w-3" />
-                {model.author}
+                {item.author}
               </span>
             )}
             <span className="flex items-center gap-1">
               <Download className="h-3 w-3" />
-              {formatNumber(model.downloads)}
+              {formatNumber(item.downloads)}
             </span>
             <span className="flex items-center gap-1">
               <Heart className="h-3 w-3" />
-              {formatNumber(model.likes)}
+              {formatNumber(item.likes)}
             </span>
-            {model.last_modified && (
+            {item.last_modified && (
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {formatDate(model.last_modified)}
+                {formatDate(item.last_modified)}
               </span>
             )}
           </div>
 
           <div className="flex flex-wrap gap-1">
-            {model.pipeline_tag && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                {model.pipeline_tag}
-              </Badge>
+            {/* Civitai-specific badges */}
+            {isCivitai && civitai && (
+              <>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {civitai.model_type}
+                </Badge>
+                {selectedVer?.base_model && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {t("search.baseModel", { model: selectedVer.base_model })}
+                  </Badge>
+                )}
+              </>
             )}
-            {model.library_name && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                {model.library_name}
-              </Badge>
+
+            {/* HF-specific badges */}
+            {!isCivitai && hf && (
+              <>
+                {hf.pipeline_tag && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {hf.pipeline_tag}
+                  </Badge>
+                )}
+                {hf.library_name && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {hf.library_name}
+                  </Badge>
+                )}
+              </>
             )}
-            {model.tags
+
+            {item.tags
               .filter(
                 (tag) =>
-                  tag !== model.pipeline_tag &&
-                  tag !== model.library_name &&
-                  tag !== model.author &&
+                  tag !== hf?.pipeline_tag &&
+                  tag !== hf?.library_name &&
+                  tag !== item.author &&
                   !tag.startsWith("license:") &&
                   !tag.startsWith("arxiv:") &&
                   !tag.startsWith("region:")
@@ -398,6 +475,46 @@ function ModelCard({
 
           {!loadingFiles && files && (
             <div className="space-y-2">
+              {/* Version info for Civitai models */}
+              {isCivitai && versions.length === 1 && selectedVer && (
+                <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+                  <span className="font-medium">{t("search.version")}:</span>
+                  <span>{selectedVer.name}</span>
+                  {selectedVer.base_model && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {selectedVer.base_model}
+                    </Badge>
+                  )}
+                </div>
+              )}
+              {isCivitai && versions.length > 1 && (
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {t("search.version")}:
+                  </span>
+                  <Select
+                    value={String(selectedVersionId ?? versions[0]?.id ?? "")}
+                    onValueChange={(v) => onSelectVersion(Number(v))}
+                  >
+                    <SelectTrigger className="h-7 w-auto max-w-[280px] text-xs">
+                      <span className="truncate">
+                        {selectedVer
+                          ? `${selectedVer.name}${selectedVer.base_model ? ` (${selectedVer.base_model})` : ""}`
+                          : t("search.selectVersion")}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {versions.map((ver) => (
+                        <SelectItem key={ver.id} value={String(ver.id)}>
+                          {ver.name}
+                          {ver.base_model ? ` (${ver.base_model})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {files.length > 0 && (
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("search.fileCount", { count: files.length })}
@@ -410,7 +527,8 @@ function ModelCard({
                     <FileRow
                       key={file.filename}
                       file={file}
-                      modelId={model.model_id}
+                      modelId={item.id}
+                      modelSource={item.source}
                       onRequestDownload={onRequestDownload}
                     />
                   ))}
@@ -418,7 +536,12 @@ function ModelCard({
               )}
 
               {otherFiles && otherFiles.length > 0 && modelFiles && modelFiles.length > 0 && (
-                <OtherFilesSection files={otherFiles} modelId={model.model_id} onRequestDownload={onRequestDownload} />
+                <OtherFilesSection
+                  files={otherFiles}
+                  modelId={item.id}
+                  modelSource={item.source}
+                  onRequestDownload={onRequestDownload}
+                />
               )}
 
               {(!modelFiles || modelFiles.length === 0) && otherFiles && (
@@ -427,7 +550,8 @@ function ModelCard({
                     <FileRow
                       key={file.filename}
                       file={file}
-                      modelId={model.model_id}
+                      modelId={item.id}
+                      modelSource={item.source}
                       onRequestDownload={onRequestDownload}
                     />
                   ))}
@@ -444,10 +568,12 @@ function ModelCard({
 function OtherFilesSection({
   files,
   modelId,
+  modelSource,
   onRequestDownload,
 }: {
   files: HfFileEntry[];
   modelId: string;
+  modelSource: "huggingface" | "civitai";
   onRequestDownload: (p: PendingDownload) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -473,7 +599,13 @@ function OtherFilesSection({
       {expanded && (
         <div className="mt-1 space-y-1">
           {files.map((file) => (
-            <FileRow key={file.filename} file={file} modelId={modelId} onRequestDownload={onRequestDownload} />
+            <FileRow
+              key={file.filename}
+              file={file}
+              modelId={modelId}
+              modelSource={modelSource}
+              onRequestDownload={onRequestDownload}
+            />
           ))}
         </div>
       )}
@@ -484,10 +616,12 @@ function OtherFilesSection({
 function FileRow({
   file,
   modelId,
+  modelSource,
   onRequestDownload,
 }: {
   file: HfFileEntry;
   modelId: string;
+  modelSource: "huggingface" | "civitai";
   onRequestDownload: (p: PendingDownload) => void;
 }) {
   const { t } = useI18n();
@@ -522,6 +656,7 @@ function FileRow({
       onRequestDownload({
         file,
         modelId,
+        modelSource,
         suggestedType,
         matchedSubdir: matched,
         subdirs,
@@ -531,7 +666,7 @@ function FileRow({
     } finally {
       setPreparing(false);
     }
-  }, [file, modelId, baseDir, rules, addLog, onRequestDownload]);
+  }, [file, modelId, modelSource, baseDir, rules, addLog, onRequestDownload]);
 
   const isModel = isModelFile(file.filename);
 
@@ -658,7 +793,7 @@ function DownloadConfirmDialog({
         gid: "",
         url: pending.file.download_url,
         filename: pending.file.filename,
-        source: "huggingface",
+        source: pending.modelSource,
         model_type: isManual ? "custom" : selectedSubdir || pending.suggestedType,
         target_dir: resolvedDir,
         file_size: pending.file.size ?? null,
@@ -704,6 +839,7 @@ function DownloadConfirmDialog({
           {/* Model info */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
             <span className="font-medium shrink-0">{t("taskDetail.source")}:</span>
+            <SourceBadge source={pending.modelSource} />
             <span className="truncate" title={pending.modelId}>{pending.modelId}</span>
           </div>
 

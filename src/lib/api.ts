@@ -7,6 +7,8 @@ import type {
   HfSearchResponse,
   HfFilesResponse,
   HfSearchParams,
+  CivitaiSearchResponse,
+  CivitaiSearchParams,
 } from "./types";
 
 /**
@@ -181,6 +183,25 @@ export async function getHfModelFiles(
     modelId,
     proxy: proxy || null,
     token: token || null,
+  });
+}
+
+// --- Civitai Search ---
+
+export async function searchCivitaiModels(
+  params: CivitaiSearchParams,
+  proxy?: string,
+  civitaiToken?: string
+): Promise<CivitaiSearchResponse> {
+  return invoke("search_civitai_models", {
+    query: params.query,
+    types: params.types || null,
+    sort: params.sort || null,
+    period: params.period || null,
+    limit: params.limit ?? 20,
+    page: params.page ?? 1,
+    proxy: proxy || null,
+    civitaiToken: civitaiToken || null,
   });
 }
 
