@@ -74,7 +74,7 @@ fn guess_type(filename: &str, path: &str) -> Option<String> {
         Some("embedding".to_string())
     } else if combined.contains("flux") || combined.contains("sd3") || combined.contains("unet") {
         Some("diffusion_model".to_string())
-    } else if lower.ends_with(".safetensors") || lower.ends_with(".ckpt") || lower.ends_with(".bin") {
+    } else if lower.ends_with(".safetensors") || lower.ends_with(".ckpt") || lower.ends_with(".bin") || lower.ends_with(".gguf") {
         Some("checkpoint".to_string())
     } else {
         None

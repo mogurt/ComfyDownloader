@@ -118,6 +118,106 @@ export interface TaskSummary {
   completed: number;
 }
 
+// --- Hugging Face Search ---
+
+export interface HfModelInfo {
+  model_id: string;
+  author: string | null;
+  tags: string[];
+  downloads: number;
+  likes: number;
+  last_modified: string | null;
+  pipeline_tag: string | null;
+  private: boolean;
+  library_name: string | null;
+}
+
+export interface HfSearchResponse {
+  models: HfModelInfo[];
+  has_more: boolean;
+}
+
+export interface HfFileEntry {
+  filename: string;
+  size: number | null;
+  download_url: string;
+}
+
+export interface HfFilesResponse {
+  model_id: string;
+  files: HfFileEntry[];
+}
+
+export interface HfSearchParams {
+  query: string;
+  filter?: string;
+  sort?: string;
+  direction?: string;
+  limit?: number;
+  offset?: number;
+}
+
+// --- Civitai Search ---
+
+export interface CivitaiModelInfo {
+  id: number;
+  name: string;
+  model_type: string;
+  creator: string | null;
+  download_count: number;
+  thumbs_up_count: number;
+  tags: string[];
+  nsfw: boolean;
+  thumbnail_url: string | null;
+  model_versions: CivitaiVersionInfo[];
+}
+
+export interface CivitaiVersionInfo {
+  id: number;
+  name: string;
+  base_model: string | null;
+  files: CivitaiFileEntry[];
+  download_url: string | null;
+}
+
+export interface CivitaiFileEntry {
+  filename: string;
+  size_kb: number | null;
+  download_url: string;
+}
+
+export interface CivitaiSearchResponse {
+  models: CivitaiModelInfo[];
+  has_more: boolean;
+  next_page: string | null;
+}
+
+export interface CivitaiSearchParams {
+  query: string;
+  types?: string;
+  sort?: string;
+  period?: string;
+  limit?: number;
+  page?: number;
+}
+
+// --- Unified Search ---
+
+export interface SearchResultItem {
+  source: "huggingface" | "civitai";
+  id: string;
+  name: string;
+  author: string | null;
+  downloads: number;
+  likes: number;
+  tags: string[];
+  model_type: string | null;
+  last_modified: string | null;
+  thumbnail_url: string | null;
+  hf?: HfModelInfo;
+  civitai?: CivitaiModelInfo;
+}
+
 export interface Aria2Status {
   gid: string;
   status: string;

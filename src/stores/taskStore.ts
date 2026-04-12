@@ -53,6 +53,15 @@ function isHuggingFaceUrl(url: string): boolean {
   }
 }
 
+function isCivitaiUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.host.toLowerCase().includes("civitai.com");
+  } catch {
+    return false;
+  }
+}
+
 async function getDb(): Promise<Database> {
   if (!db) {
     db = await Database.load("sqlite:comfy_downloader.db");
@@ -375,11 +384,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       const headers: string[] = [];
       const settings = useSettingsStore.getState().settings;
+      let downloadUrl = task.url;
       if (isHuggingFaceUrl(task.url) && settings.huggingface_token.trim()) {
         headers.push(`Authorization: Bearer ${settings.huggingface_token.trim()}`);
       }
+      if (isCivitaiUrl(task.url) && settings.civitai_api_token.trim()) {
+        const token = settings.civitai_api_token.trim();
+        const sep = downloadUrl.includes("?") ? "&" : "?";
+        downloadUrl = `${downloadUrl}${sep}token=${encodeURIComponent(token)}`;
+      }
       const gid = await api.createDownload(
-        task.url,
+        downloadUrl,
         task.target_dir,
         task.filename,
         headers.length > 0 ? headers : undefined
