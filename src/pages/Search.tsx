@@ -122,7 +122,7 @@ const SOURCE_OPTIONS: { value: SourceFilter; labelKey: string }[] = [
   { value: "civitai", labelKey: "search.source.civitai" },
 ];
 
-export default function Search() {
+export default function Search({ highlightFilename }: { highlightFilename?: string | null }) {
   const { t } = useI18n();
   const {
     query, setQuery,
@@ -302,6 +302,7 @@ export default function Search() {
                 onToggle={() => toggleModelFiles(item.id)}
                 onSelectVersion={(vId) => selectVersion(item.id, vId)}
                 onRequestDownload={setPendingDownload}
+                highlightFilename={highlightFilename}
               />
             ))}
           </div>
@@ -365,6 +366,7 @@ function ModelCard({
   onToggle,
   onSelectVersion,
   onRequestDownload,
+  highlightFilename,
 }: {
   item: SearchResultItem;
   expanded: boolean;
@@ -374,6 +376,7 @@ function ModelCard({
   onToggle: () => void;
   onSelectVersion: (versionId: number) => void;
   onRequestDownload: (p: PendingDownload) => void;
+  highlightFilename?: string | null;
 }) {
   const { t } = useI18n();
 
@@ -585,6 +588,7 @@ function ModelCard({
                       modelId={item.id}
                       modelSource={item.source}
                       onRequestDownload={onRequestDownload}
+                      highlightFilename={highlightFilename}
                     />
                   ))}
                 </div>
@@ -596,6 +600,7 @@ function ModelCard({
                   modelId={item.id}
                   modelSource={item.source}
                   onRequestDownload={onRequestDownload}
+                  highlightFilename={highlightFilename}
                 />
               )}
 
@@ -608,6 +613,7 @@ function ModelCard({
                       modelId={item.id}
                       modelSource={item.source}
                       onRequestDownload={onRequestDownload}
+                      highlightFilename={highlightFilename}
                     />
                   ))}
                 </div>
@@ -625,11 +631,13 @@ function OtherFilesSection({
   modelId,
   modelSource,
   onRequestDownload,
+  highlightFilename,
 }: {
   files: HfFileEntry[];
   modelId: string;
   modelSource: "huggingface" | "civitai";
   onRequestDownload: (p: PendingDownload) => void;
+  highlightFilename?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -660,6 +668,7 @@ function OtherFilesSection({
               modelId={modelId}
               modelSource={modelSource}
               onRequestDownload={onRequestDownload}
+              highlightFilename={highlightFilename}
             />
           ))}
         </div>
@@ -673,11 +682,13 @@ function FileRow({
   modelId,
   modelSource,
   onRequestDownload,
+  highlightFilename,
 }: {
   file: HfFileEntry;
   modelId: string;
   modelSource: "huggingface" | "civitai";
   onRequestDownload: (p: PendingDownload) => void;
+  highlightFilename?: string | null;
 }) {
   const { t } = useI18n();
   const [preparing, setPreparing] = useState(false);
@@ -724,13 +735,26 @@ function FileRow({
   }, [file, modelId, modelSource, baseDir, rules, addLog, onRequestDownload]);
 
   const isModel = isModelFile(file.filename);
+  const isHighlighted = !!(
+    highlightFilename &&
+    file.filename.toLowerCase() === highlightFilename.toLowerCase()
+  );
 
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background/60 transition-colors">
-      <FileBox className={`h-3.5 w-3.5 shrink-0 ${isModel ? "text-primary" : "text-muted-foreground"}`} />
+    <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+      isHighlighted
+        ? "bg-primary/10 ring-1 ring-primary/30"
+        : "hover:bg-background/60"
+    }`}>
+      <FileBox className={`h-3.5 w-3.5 shrink-0 ${isHighlighted ? "text-primary" : isModel ? "text-primary" : "text-muted-foreground"}`} />
       <span className={`flex-1 truncate ${isModel ? "font-medium" : "text-muted-foreground"}`}>
         {file.filename}
       </span>
+      {isHighlighted && (
+        <Badge variant="default" className="h-4 px-1.5 text-[10px] shrink-0">
+          {translate("workflow.match")}
+        </Badge>
+      )}
       {file.size != null && (
         <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
           <HardDrive className="h-3 w-3" />
