@@ -65,6 +65,9 @@ pub fn run() {
             commands::settings::open_directory,
             commands::comfyui::check_comfyui_status,
             commands::comfyui::verify_model_in_comfyui,
+            commands::hf_search::search_hf_models,
+            commands::hf_search::get_hf_model_files,
+            commands::hf_search::search_civitai_models,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

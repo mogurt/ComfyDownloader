@@ -7,19 +7,24 @@ import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import * as api from "@/lib/api";
 import Home from "@/pages/Home";
+import Search from "@/pages/Search";
 import Settings from "@/pages/Settings";
-import { Settings as SettingsIcon, Download } from "lucide-react";
+import { Settings as SettingsIcon, Download, Search as SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export default function App() {
   const { t } = useI18n();
-  const [page, setPage] = useState<"home" | "settings">("home");
+  const [page, setPage] = useState<"home" | "search" | "settings">("search");
   const loadTasks = useTaskStore((s) => s.loadTasks);
   const resetStaleTasks = useTaskStore((s) => s.resetStaleTasks);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const loadRules = useSettingsStore((s) => s.loadRules);
   const syncAria2Settings = useSettingsStore((s) => s.syncAria2Settings);
   const theme = useSettingsStore((s) => s.settings.theme);
+  const activeCount = useTaskStore((s) =>
+    s.tasks.filter((t) => t.status === "downloading" || t.status === "queued").length
+  );
 
   useAria2Events();
 
@@ -67,12 +72,25 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1">
             <Button
+              variant={page === "search" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setPage("search")}
+            >
+              <SearchIcon className="mr-1 h-4 w-4" />
+              {t("nav.search")}
+            </Button>
+            <Button
               variant={page === "home" ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setPage("home")}
             >
               <Download className="mr-1 h-4 w-4" />
               {t("nav.downloads")}
+              {activeCount > 0 && (
+                <Badge variant="default" className="ml-1 h-4 min-w-4 px-1 text-[10px]">
+                  {activeCount}
+                </Badge>
+              )}
             </Button>
             <Button
               variant={page === "settings" ? "secondary" : "ghost"}
@@ -85,7 +103,7 @@ export default function App() {
           </div>
         </header>
         <main className="flex-1 overflow-hidden">
-          {page === "home" ? <Home /> : <Settings />}
+          {page === "home" ? <Home /> : page === "search" ? <Search /> : <Settings />}
         </main>
       </div>
     </TooltipProvider>

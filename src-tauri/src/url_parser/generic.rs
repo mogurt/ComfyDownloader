@@ -50,7 +50,7 @@ fn guess_type(filename: &str) -> Option<String> {
         Some("embedding".to_string())
     } else if lower.contains("flux") || lower.contains("sd3") {
         Some("diffusion_model".to_string())
-    } else if lower.ends_with(".safetensors") || lower.ends_with(".ckpt") {
+    } else if lower.ends_with(".safetensors") || lower.ends_with(".ckpt") || lower.ends_with(".gguf") {
         Some("checkpoint".to_string())
     } else {
         None

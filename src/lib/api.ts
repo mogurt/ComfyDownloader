@@ -4,6 +4,11 @@ import type {
   ModelTypeInfo,
   DirMapping,
   Aria2Status,
+  HfSearchResponse,
+  HfFilesResponse,
+  HfSearchParams,
+  CivitaiSearchResponse,
+  CivitaiSearchParams,
 } from "./types";
 
 /**
@@ -148,6 +153,56 @@ export async function resolveRelativeSubdir(
 
 export async function openDirectory(path: string): Promise<void> {
   return invoke("open_directory", { path });
+}
+
+// --- Hugging Face Search ---
+
+export async function searchHfModels(
+  params: HfSearchParams,
+  proxy?: string,
+  token?: string
+): Promise<HfSearchResponse> {
+  return invoke("search_hf_models", {
+    query: params.query,
+    filter: params.filter || null,
+    sort: params.sort || null,
+    direction: params.direction || null,
+    limit: params.limit ?? 20,
+    offset: params.offset ?? 0,
+    proxy: proxy || null,
+    token: token || null,
+  });
+}
+
+export async function getHfModelFiles(
+  modelId: string,
+  proxy?: string,
+  token?: string
+): Promise<HfFilesResponse> {
+  return invoke("get_hf_model_files", {
+    modelId,
+    proxy: proxy || null,
+    token: token || null,
+  });
+}
+
+// --- Civitai Search ---
+
+export async function searchCivitaiModels(
+  params: CivitaiSearchParams,
+  proxy?: string,
+  civitaiToken?: string
+): Promise<CivitaiSearchResponse> {
+  return invoke("search_civitai_models", {
+    query: params.query,
+    types: params.types || null,
+    sort: params.sort || null,
+    period: params.period || null,
+    limit: params.limit ?? 20,
+    page: params.page ?? 1,
+    proxy: proxy || null,
+    civitaiToken: civitaiToken || null,
+  });
 }
 
 const TYPE_TO_DIRNAME: Record<string, string[]> = {
