@@ -32,6 +32,7 @@ import {
   PackageSearch,
   FolderOpen,
   ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import { useSearchStore, type SortOption, type SourceFilter } from "@/stores/searchStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -122,7 +123,13 @@ const SOURCE_OPTIONS: { value: SourceFilter; labelKey: string }[] = [
   { value: "civitai", labelKey: "search.source.civitai" },
 ];
 
-export default function Search() {
+export default function Search({
+  highlightFilename,
+  onNavigateToSettings,
+}: {
+  highlightFilename?: string | null;
+  onNavigateToSettings?: () => void;
+}) {
   const { t } = useI18n();
   const {
     query, setQuery,
@@ -302,6 +309,7 @@ export default function Search() {
                 onToggle={() => toggleModelFiles(item.id)}
                 onSelectVersion={(vId) => selectVersion(item.id, vId)}
                 onRequestDownload={setPendingDownload}
+                highlightFilename={highlightFilename}
               />
             ))}
           </div>
@@ -330,6 +338,7 @@ export default function Search() {
       <DownloadConfirmDialog
         pending={pendingDownload}
         onClose={() => setPendingDownload(null)}
+        onNavigateToSettings={onNavigateToSettings}
       />
     </div>
   );
@@ -365,6 +374,7 @@ function ModelCard({
   onToggle,
   onSelectVersion,
   onRequestDownload,
+  highlightFilename,
 }: {
   item: SearchResultItem;
   expanded: boolean;
@@ -374,6 +384,7 @@ function ModelCard({
   onToggle: () => void;
   onSelectVersion: (versionId: number) => void;
   onRequestDownload: (p: PendingDownload) => void;
+  highlightFilename?: string | null;
 }) {
   const { t } = useI18n();
 
@@ -585,6 +596,7 @@ function ModelCard({
                       modelId={item.id}
                       modelSource={item.source}
                       onRequestDownload={onRequestDownload}
+                      highlightFilename={highlightFilename}
                     />
                   ))}
                 </div>
@@ -596,6 +608,7 @@ function ModelCard({
                   modelId={item.id}
                   modelSource={item.source}
                   onRequestDownload={onRequestDownload}
+                  highlightFilename={highlightFilename}
                 />
               )}
 
@@ -608,6 +621,7 @@ function ModelCard({
                       modelId={item.id}
                       modelSource={item.source}
                       onRequestDownload={onRequestDownload}
+                      highlightFilename={highlightFilename}
                     />
                   ))}
                 </div>
@@ -625,11 +639,13 @@ function OtherFilesSection({
   modelId,
   modelSource,
   onRequestDownload,
+  highlightFilename,
 }: {
   files: HfFileEntry[];
   modelId: string;
   modelSource: "huggingface" | "civitai";
   onRequestDownload: (p: PendingDownload) => void;
+  highlightFilename?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -660,6 +676,7 @@ function OtherFilesSection({
               modelId={modelId}
               modelSource={modelSource}
               onRequestDownload={onRequestDownload}
+              highlightFilename={highlightFilename}
             />
           ))}
         </div>
@@ -673,11 +690,13 @@ function FileRow({
   modelId,
   modelSource,
   onRequestDownload,
+  highlightFilename,
 }: {
   file: HfFileEntry;
   modelId: string;
   modelSource: "huggingface" | "civitai";
   onRequestDownload: (p: PendingDownload) => void;
+  highlightFilename?: string | null;
 }) {
   const { t } = useI18n();
   const [preparing, setPreparing] = useState(false);
@@ -724,13 +743,26 @@ function FileRow({
   }, [file, modelId, modelSource, baseDir, rules, addLog, onRequestDownload]);
 
   const isModel = isModelFile(file.filename);
+  const isHighlighted = !!(
+    highlightFilename &&
+    file.filename.toLowerCase() === highlightFilename.toLowerCase()
+  );
 
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background/60 transition-colors">
-      <FileBox className={`h-3.5 w-3.5 shrink-0 ${isModel ? "text-primary" : "text-muted-foreground"}`} />
+    <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+      isHighlighted
+        ? "bg-primary/10 ring-1 ring-primary/30"
+        : "hover:bg-background/60"
+    }`}>
+      <FileBox className={`h-3.5 w-3.5 shrink-0 ${isHighlighted ? "text-primary" : isModel ? "text-primary" : "text-muted-foreground"}`} />
       <span className={`flex-1 truncate ${isModel ? "font-medium" : "text-muted-foreground"}`}>
         {file.filename}
       </span>
+      {isHighlighted && (
+        <Badge variant="default" className="h-4 px-1.5 text-[10px] shrink-0">
+          {translate("workflow.match")}
+        </Badge>
+      )}
       {file.size != null && (
         <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
           <HardDrive className="h-3 w-3" />
@@ -763,9 +795,11 @@ function FileRow({
 function DownloadConfirmDialog({
   pending,
   onClose,
+  onNavigateToSettings,
 }: {
   pending: PendingDownload | null;
   onClose: () => void;
+  onNavigateToSettings?: () => void;
 }) {
   const { t } = useI18n();
   const [selectedSubdir, setSelectedSubdir] = useState("");
@@ -810,6 +844,11 @@ function DownloadConfirmDialog({
   }, [selectedSubdir, baseDir]);
 
   if (!pending) return null;
+
+  const isCivitaiSource = pending.modelSource === "civitai";
+  const civitaiTokenMissing = isCivitaiSource && !settings.civitai_api_token.trim();
+  const isHfSource = pending.modelSource === "huggingface";
+  const hfTokenMissing = isHfSource && !settings.huggingface_token.trim();
 
   const isManual = selectedSubdir === "__manual__";
   const resolvedDir = isManual
@@ -924,6 +963,45 @@ function DownloadConfirmDialog({
             )}
           </div>
 
+          {/* Token warning */}
+          {civitaiTokenMissing && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  {t("search.civitaiTokenRequired")}
+                </p>
+                <p className="text-[11px] text-amber-600/80 dark:text-amber-400/70 mt-0.5">
+                  {t("search.civitaiTokenRequiredHint")}
+                </p>
+                {onNavigateToSettings && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-6 text-[11px] px-2"
+                    onClick={() => { onClose(); onNavigateToSettings(); }}
+                  >
+                    {t("search.goToSettings")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {hfTokenMissing && (
+            <div className="flex items-start gap-2 rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2.5">
+              <AlertTriangle className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                  {t("search.hfTokenOptional")}
+                </p>
+                <p className="text-[11px] text-blue-600/80 dark:text-blue-400/70 mt-0.5">
+                  {t("search.hfTokenOptionalHint")}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Subdirectory selection */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium">{t("search.targetDir")}</label>
@@ -994,7 +1072,7 @@ function DownloadConfirmDialog({
           </DialogClose>
           <Button
             size="sm"
-            disabled={downloading || !resolvedDir}
+            disabled={downloading || !resolvedDir || civitaiTokenMissing}
             onClick={handleConfirm}
           >
             {downloading ? (

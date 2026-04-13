@@ -9,6 +9,9 @@ import type {
   HfSearchParams,
   CivitaiSearchResponse,
   CivitaiSearchParams,
+  ParseWorkflowResult,
+  ModelLocalStatus,
+  WorkflowFileInfo,
 } from "./types";
 
 /**
@@ -234,4 +237,31 @@ export function matchSubdir(
   }
 
   return null;
+}
+
+// --- Workflow Parser ---
+
+export async function parseWorkflowJson(
+  jsonStr: string
+): Promise<ParseWorkflowResult> {
+  return invoke("parse_workflow_json", { jsonStr });
+}
+
+export async function parseWorkflowFile(
+  filePath: string
+): Promise<ParseWorkflowResult> {
+  return invoke("parse_workflow_file", { filePath });
+}
+
+export async function checkModelsLocal(
+  baseDir: string,
+  filenames: string[]
+): Promise<ModelLocalStatus[]> {
+  return invoke("check_models_local", { baseDir, filenames });
+}
+
+export async function scanWorkflowDir(
+  comfyuiRoot: string
+): Promise<WorkflowFileInfo[]> {
+  return invoke("scan_workflow_dir", { comfyuiRoot });
 }
