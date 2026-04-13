@@ -289,24 +289,34 @@ export default function Settings() {
                   className="w-72"
                 />
               </SettingRow>
-              <SettingRow label={t("settings.civitaiToken")}>
-                <Input
-                  type="password"
-                  placeholder={t("settings.placeholder.civitaiToken")}
-                  value={settings.civitai_api_token}
-                  onChange={(e) => updateSetting("civitai_api_token", e.target.value)}
-                  className="w-72"
-                />
-              </SettingRow>
-              <SettingRow label={t("settings.huggingfaceToken")}>
-                <Input
-                  type="password"
-                  placeholder={t("settings.placeholder.huggingfaceToken")}
-                  value={settings.huggingface_token}
-                  onChange={(e) => updateSetting("huggingface_token", e.target.value)}
-                  className="w-72"
-                />
-              </SettingRow>
+              <div className="space-y-1">
+                <SettingRow label={t("settings.civitaiToken")}>
+                  <Input
+                    type="password"
+                    placeholder={t("settings.placeholder.civitaiToken")}
+                    value={settings.civitai_api_token}
+                    onChange={(e) => updateSetting("civitai_api_token", e.target.value)}
+                    className="w-72"
+                  />
+                </SettingRow>
+                <p className="text-[11px] text-muted-foreground px-2.5 leading-relaxed">
+                  {t("settings.civitaiTokenHelp")}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <SettingRow label={t("settings.huggingfaceToken")}>
+                  <Input
+                    type="password"
+                    placeholder={t("settings.placeholder.huggingfaceToken")}
+                    value={settings.huggingface_token}
+                    onChange={(e) => updateSetting("huggingface_token", e.target.value)}
+                    className="w-72"
+                  />
+                </SettingRow>
+                <p className="text-[11px] text-muted-foreground px-2.5 leading-relaxed">
+                  {t("settings.hfTokenHelp")}
+                </p>
+              </div>
             </SettingGroup>
           </TabsContent>
 
