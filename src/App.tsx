@@ -163,7 +163,10 @@ export default function App() {
             <Home />
           </div>
           <div className={`flex-1 overflow-hidden ${page === "search" ? "" : "hidden"}`}>
-            <Search highlightFilename={workflowSearchFilename} />
+            <Search
+              highlightFilename={workflowSearchFilename}
+              onNavigateToSettings={() => handleSetPage("settings")}
+            />
           </div>
           <div className={`flex-1 overflow-hidden ${page === "workflow" ? "" : "hidden"}`}>
             <Workflow
