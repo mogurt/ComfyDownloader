@@ -1,21 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAria2Events } from "@/hooks/useAria2Events";
 import { useTaskStore } from "@/stores/taskStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useSearchStore } from "@/stores/searchStore";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import * as api from "@/lib/api";
 import Home from "@/pages/Home";
 import Search from "@/pages/Search";
 import Settings from "@/pages/Settings";
-import { Settings as SettingsIcon, Download, Search as SearchIcon } from "lucide-react";
+import Workflow from "@/pages/Workflow";
+import { Settings as SettingsIcon, Download, Search as SearchIcon, FileJson, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+type Page = "home" | "search" | "workflow" | "settings";
+
 export default function App() {
   const { t } = useI18n();
-  const [page, setPage] = useState<"home" | "search" | "settings">("search");
+  const [page, setPage] = useState<Page>("search");
   const loadTasks = useTaskStore((s) => s.loadTasks);
   const resetStaleTasks = useTaskStore((s) => s.resetStaleTasks);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -25,6 +29,9 @@ export default function App() {
   const activeCount = useTaskStore((s) =>
     s.tasks.filter((t) => t.status === "downloading" || t.status === "queued").length
   );
+
+  // Workflow → Search context
+  const [workflowSearchFilename, setWorkflowSearchFilename] = useState<string | null>(null);
 
   useAria2Events();
 
@@ -49,7 +56,6 @@ export default function App() {
     const preventContextMenu = (event: MouseEvent) => {
       event.preventDefault();
     };
-
     document.addEventListener("contextmenu", preventContextMenu);
     return () => {
       document.removeEventListener("contextmenu", preventContextMenu);
@@ -61,6 +67,25 @@ export default function App() {
     if (theme !== "system") return;
     return watchSystemTheme(() => applyTheme("system"));
   }, [theme]);
+
+  const handleNavigateToSearch = useCallback((query: string, filename: string) => {
+    setWorkflowSearchFilename(filename);
+    useSearchStore.getState().setQuery(query);
+    setPage("search");
+    setTimeout(() => useSearchStore.getState().search(), 50);
+  }, []);
+
+  const handleBackToWorkflow = useCallback(() => {
+    setWorkflowSearchFilename(null);
+    setPage("workflow");
+  }, []);
+
+  const handleSetPage = useCallback((p: Page) => {
+    if (p !== "search") {
+      setWorkflowSearchFilename(null);
+    }
+    setPage(p);
+  }, []);
 
   return (
     <TooltipProvider>
@@ -74,15 +99,23 @@ export default function App() {
             <Button
               variant={page === "search" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setPage("search")}
+              onClick={() => handleSetPage("search")}
             >
               <SearchIcon className="mr-1 h-4 w-4" />
               {t("nav.search")}
             </Button>
             <Button
+              variant={page === "workflow" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => handleSetPage("workflow")}
+            >
+              <FileJson className="mr-1 h-4 w-4" />
+              {t("nav.workflow")}
+            </Button>
+            <Button
               variant={page === "home" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setPage("home")}
+              onClick={() => handleSetPage("home")}
             >
               <Download className="mr-1 h-4 w-4" />
               {t("nav.downloads")}
@@ -95,15 +128,55 @@ export default function App() {
             <Button
               variant={page === "settings" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setPage("settings")}
+              onClick={() => handleSetPage("settings")}
             >
               <SettingsIcon className="mr-1 h-4 w-4" />
               {t("nav.settings")}
             </Button>
           </div>
         </header>
-        <main className="flex-1 overflow-hidden">
-          {page === "home" ? <Home /> : page === "search" ? <Search /> : <Settings />}
+
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {/* Context bar: searching from workflow */}
+          {page === "search" && workflowSearchFilename && (
+            <div className="flex items-center gap-3 border-b bg-muted/50 px-4 py-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={handleBackToWorkflow}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                {t("workflow.backToWorkflow")}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {t("workflow.searchingFor")}
+              </span>
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">
+                {workflowSearchFilename}
+              </code>
+            </div>
+          )}
+
+          {/* All pages stay mounted, only active one is visible */}
+          <div className={`flex-1 overflow-hidden ${page === "home" ? "" : "hidden"}`}>
+            <Home />
+          </div>
+          <div className={`flex-1 overflow-hidden ${page === "search" ? "" : "hidden"}`}>
+            <Search
+              highlightFilename={workflowSearchFilename}
+              onNavigateToSettings={() => handleSetPage("settings")}
+            />
+          </div>
+          <div className={`flex-1 overflow-hidden ${page === "workflow" ? "" : "hidden"}`}>
+            <Workflow
+              onNavigateToSearch={handleNavigateToSearch}
+              onNavigateToSettings={() => handleSetPage("settings")}
+            />
+          </div>
+          <div className={`flex-1 overflow-hidden ${page === "settings" ? "" : "hidden"}`}>
+            <Settings />
+          </div>
         </main>
       </div>
     </TooltipProvider>

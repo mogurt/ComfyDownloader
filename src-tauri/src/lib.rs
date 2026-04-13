@@ -68,6 +68,10 @@ pub fn run() {
             commands::hf_search::search_hf_models,
             commands::hf_search::get_hf_model_files,
             commands::hf_search::search_civitai_models,
+            commands::workflow::parse_workflow_json,
+            commands::workflow::parse_workflow_file,
+            commands::workflow::check_models_local,
+            commands::workflow::scan_workflow_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
