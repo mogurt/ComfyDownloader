@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import * as api from "@/lib/api";
 import type {
@@ -538,7 +539,7 @@ function ModelRow({
 }: {
   model: WorkflowModelRef;
   status?: ModelLocalStatus;
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
   onSearch: (filename: string) => void;
 }) {
   const found = status?.found ?? false;
