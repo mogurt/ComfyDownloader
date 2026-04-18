@@ -165,14 +165,16 @@ export default function Search({
     }
   };
 
-  const handleSortChange = (value: string) => {
+  const handleSortChange = (value: SortOption | null) => {
+    if (!value) return;
     setSort(value as SortOption);
     if (query.trim()) {
       setTimeout(() => useSearchStore.getState().search(), 0);
     }
   };
 
-  const handleFilterChange = (value: string) => {
+  const handleFilterChange = (value: string | null) => {
+    if (!value) return;
     setFilter(value === "__all__" ? "" : value);
     if (query.trim()) {
       setTimeout(() => useSearchStore.getState().search(), 0);
@@ -1031,7 +1033,7 @@ function DownloadConfirmDialog({
               {!isManual && subSubdirs.length > 0 && (
                 <Select
                   value={selectedSubSubdir || "__root__"}
-                  onValueChange={(v) => setSelectedSubSubdir(v === "__root__" ? "" : v)}
+                  onValueChange={(v) => setSelectedSubSubdir(v == null || v === "__root__" ? "" : v)}
                 >
                   <SelectTrigger className="w-[120px] h-8 text-xs">
                     <SelectValue />
