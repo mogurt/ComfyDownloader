@@ -1,4 +1,4 @@
-# ComfyUI Model Downloader
+# ComfyDownloader
 
 A desktop application for downloading AI models to the correct ComfyUI directories, powered by aria2.
 

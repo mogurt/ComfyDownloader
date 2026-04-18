@@ -5,7 +5,7 @@ import type { AppLanguage } from "@/lib/types";
 
 const translations = {
   en: {
-    "app.title": "ComfyUI Model Downloader",
+    "app.title": "ComfyDownloader",
     "nav.downloads": "Downloads",
     "nav.search": "Search",
     "nav.workflow": "Workflow",
@@ -321,7 +321,7 @@ const translations = {
     "workflow.match": "Match",
   },
   zh: {
-    "app.title": "ComfyUI 模型下载器",
+    "app.title": "ComfyDownloader",
     "nav.downloads": "下载",
     "nav.search": "搜索",
     "nav.workflow": "工作流",

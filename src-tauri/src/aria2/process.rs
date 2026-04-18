@@ -9,6 +9,12 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use log::{info, warn};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 pub struct Aria2Process {
     child: Arc<Mutex<Option<Child>>>,
     port: u16,
@@ -76,11 +82,17 @@ impl Aria2Process {
 
         info!("Starting aria2c at {}:{}", self.aria2_path.display(), self.port);
 
-        let mut child = Command::new(&self.aria2_path)
+        let mut command = Command::new(&self.aria2_path);
+        command
             .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+
+        let mut child = command
             .spawn()
             .map_err(|e| format!("Failed to start aria2c: {}", e))?;
 
