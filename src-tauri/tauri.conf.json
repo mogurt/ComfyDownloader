@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ComfyDownloader",
   "version": "0.1.0",
-  "identifier": "com.comfydownloader.app",
+  "identifier": "com.comfydownloader",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "ComfyUI Model Downloader",
+        "title": "ComfyDownloader",
         "width": 1100,
         "height": 720,
         "minWidth": 900,

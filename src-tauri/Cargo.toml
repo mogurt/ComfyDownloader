@@ -1,7 +1,7 @@
 [package]
 name = "comfy-downloader"
 version = "0.1.0"
-description = "ComfyUI Model Downloader"
+description = "ComfyDownloader"
 authors = ["you"]
 license = "MIT"
 edition = "2021"
