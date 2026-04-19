@@ -39,16 +39,6 @@ pub struct Aria2Uri {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DownloadEvent {
-    pub gid: String,
-    pub status: String,
-    pub total_length: u64,
-    pub completed_length: u64,
-    pub download_speed: u64,
-    pub error_message: Option<String>,
-}
-
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>;
 
 #[derive(Clone)]
