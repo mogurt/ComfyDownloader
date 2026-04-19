@@ -47,14 +47,6 @@ impl Aria2Process {
         }
     }
 
-    pub fn port(&self) -> u16 {
-        self.port
-    }
-
-    pub fn secret(&self) -> &str {
-        &self.secret
-    }
-
     pub async fn start(&self, app_handle: &AppHandle) -> Result<(), String> {
         let mut args = vec![
             "--enable-rpc".to_string(),
@@ -148,14 +140,6 @@ impl Aria2Process {
         Ok(())
     }
 
-    pub fn update_proxy(&mut self, proxy: Option<String>) {
-        self.proxy = proxy;
-    }
-
-    pub fn update_config(&mut self, max_concurrent: u32, max_connections: u32) {
-        self.max_concurrent = max_concurrent;
-        self.max_connections = max_connections;
-    }
 }
 
 fn spawn_aria2_output_reader<T>(app_handle: AppHandle, reader: T, stream: &'static str)
