@@ -131,6 +131,7 @@ export default function Search({
   onNavigateToSettings?: () => void;
 }) {
   const { t } = useI18n();
+  const settings = useSettingsStore((s) => s.settings);
   const {
     query, setQuery,
     sort, setSort,
@@ -147,6 +148,9 @@ export default function Search({
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const baseDir =
+    settings.model_base_dir ||
+    (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
 
   const handleInputChange = (value: string) => {
     setQuery(value);
@@ -265,6 +269,30 @@ export default function Search({
             </button>
           ))}
         </div>
+
+        {!baseDir && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                {t("search.baseDirSetupTitle")}
+              </p>
+              <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-400/80">
+                {t("search.baseDirSetupHint")}
+              </p>
+            </div>
+            {onNavigateToSettings && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 text-xs"
+                onClick={onNavigateToSettings}
+              >
+                {t("search.goToSettings")}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Results area */}
@@ -712,11 +740,6 @@ function FileRow({
     (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
 
   const handleClick = useCallback(async () => {
-    if (!baseDir) {
-      addLog("error", translate("search.noBaseDir"));
-      return;
-    }
-
     setPreparing(true);
     try {
       const rulesJson = JSON.stringify(rules);
@@ -726,8 +749,8 @@ function FileRow({
         undefined,
         rulesJson
       );
-      const subdirs = await api.listSubdirs(baseDir);
-      const matched = api.matchSubdir(suggestedType, subdirs);
+      const subdirs = baseDir ? await api.listSubdirs(baseDir) : [];
+      const matched = baseDir ? api.matchSubdir(suggestedType, subdirs) : null;
 
       onRequestDownload({
         file,
@@ -775,11 +798,12 @@ function FileRow({
         size="sm"
         variant="outline"
         className="h-6 px-2 text-xs shrink-0"
-        disabled={preparing || !baseDir}
+        disabled={preparing}
         onClick={(e) => {
           e.stopPropagation();
           handleClick();
         }}
+        title={baseDir ? undefined : t("search.downloadManualWhenNoBaseDir")}
       >
         {preparing ? (
           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -821,7 +845,7 @@ function DownloadConfirmDialog({
 
   useEffect(() => {
     if (!pending) return;
-    const initial = pending.matchedSubdir || "";
+    const initial = !baseDir ? "__manual__" : pending.matchedSubdir || "";
     setSelectedSubdir(initial);
     setSelectedSubSubdir("");
     setManualDir("");
@@ -932,6 +956,33 @@ function DownloadConfirmDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-2 min-w-0">
+          {!baseDir && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  {t("search.manualTargetRequiredTitle")}
+                </p>
+                <p className="mt-0.5 text-[11px] text-amber-600/80 dark:text-amber-400/70">
+                  {t("search.manualTargetRequiredHint")}
+                </p>
+                {onNavigateToSettings && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-6 px-2 text-[11px]"
+                    onClick={() => {
+                      onClose();
+                      onNavigateToSettings();
+                    }}
+                  >
+                    {t("search.goToSettings")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Model info */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
             <span className="font-medium shrink-0">{t("taskDetail.source")}:</span>
@@ -1008,7 +1059,7 @@ function DownloadConfirmDialog({
           <div className="space-y-1.5">
             <label className="text-xs font-medium">{t("search.targetDir")}</label>
             <div className="flex items-center gap-2">
-              {!isManual && (
+              {baseDir && !isManual && (
                 <Select
                   value={selectedSubdir || undefined}
                   onValueChange={(v) => {
@@ -1030,7 +1081,7 @@ function DownloadConfirmDialog({
                 </Select>
               )}
 
-              {!isManual && subSubdirs.length > 0 && (
+              {baseDir && !isManual && subSubdirs.length > 0 && (
                 <Select
                   value={selectedSubSubdir || "__root__"}
                   onValueChange={(v) => setSelectedSubSubdir(v == null || v === "__root__" ? "" : v)}
@@ -1048,8 +1099,8 @@ function DownloadConfirmDialog({
               )}
 
               {isManual && (
-                <span className="flex-1 truncate text-xs text-muted-foreground bg-muted rounded px-2 py-1.5 min-w-0" title={manualDir}>
-                  {manualDir}
+                <span className="flex-1 truncate rounded bg-muted px-2 py-1.5 text-xs text-muted-foreground min-w-0" title={manualDir || t("search.manualDirPlaceholder")}>
+                  {manualDir || t("search.manualDirPlaceholder")}
                 </span>
               )}
 

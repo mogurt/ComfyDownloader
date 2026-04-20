@@ -3,40 +3,12 @@ use crate::model_type::rules::{suggest_model_type, UserRule};
 use crate::url_parser;
 use crate::url_parser::ParseResult;
 use log::info;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
 
 pub type Aria2RpcState = Arc<Mutex<Option<Aria2Rpc>>>;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DownloadRequest {
-    pub url: String,
-    pub filename: String,
-    pub model_type: String,
-    pub target_dir: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DownloadTask {
-    pub id: i64,
-    pub gid: String,
-    pub url: String,
-    pub filename: String,
-    pub source: String,
-    pub model_type: String,
-    pub target_dir: String,
-    pub file_size: Option<u64>,
-    pub status: String,
-    pub progress: f64,
-    pub speed: u64,
-    pub hash: Option<String>,
-    pub error_msg: Option<String>,
-    pub created_at: String,
-    pub completed_at: Option<String>,
-}
 
 async fn get_rpc(rpc_state: &Aria2RpcState) -> Result<Aria2Rpc, String> {
     let guard = rpc_state.lock().await;

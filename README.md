@@ -26,7 +26,7 @@ A desktop application for downloading AI models to the correct ComfyUI directori
 
 - [Node.js](https://nodejs.org/) >= 18
 - [Rust](https://rustup.rs/) >= 1.77
-- Windows 10+ (macOS/Linux support planned)
+- Windows 10+ or macOS
 
 ## Development
 
@@ -44,7 +44,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-On Windows x64, `npm install` automatically downloads the required `aria2c` sidecar into `src-tauri/binaries/`.
+`npm install` automatically downloads the required `aria2c` sidecar into `src-tauri/binaries/` for supported Windows and macOS targets.
 
 ## Project Structure
 

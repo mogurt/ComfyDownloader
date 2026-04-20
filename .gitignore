@@ -13,8 +13,7 @@ dist-ssr
 *.local
 
 # Sidecar binaries (download via setup script)
-src-tauri/binaries/*.exe
-src-tauri/binaries/aria2c
+src-tauri/binaries/aria2c*
 
 # Editor directories and files
 .vscode/*

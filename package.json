@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:tauri": "node scripts/cleanup-tauri-dmg.mjs && npm run build",
     "lint": "eslint .",
     "preview": "vite preview",
     "prepare:aria2": "node scripts/prepare-aria2.mjs",
