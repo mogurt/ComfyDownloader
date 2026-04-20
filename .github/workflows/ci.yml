@@ -55,6 +55,8 @@ jobs:
           key: ${{ matrix.label }}
 
       - name: Install npm dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm ci
 
       - name: Build Tauri app

@@ -91,13 +91,23 @@ function runCommand(command, args) {
   });
 }
 
+function buildGithubHeaders() {
+  const headers = {
+    "User-Agent": "comfy-downloader-setup",
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
 async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "comfy-downloader-setup",
-      Accept: "application/vnd.github+json",
-    },
-  });
+  const response = await fetch(url, { headers: buildGithubHeaders() });
 
   if (!response.ok) {
     throw new Error(`Request failed (${response.status}) for ${url}`);
