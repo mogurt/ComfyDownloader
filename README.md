@@ -22,7 +22,44 @@ A desktop application for downloading AI models to the correct ComfyUI directori
 - **Database**: SQLite (via tauri-plugin-sql)
 - **State Management**: Zustand
 
-## Prerequisites
+## Download
+
+Pre-built binaries are published on the [Releases](../../releases) page for:
+
+- macOS (Apple Silicon, `aarch64`) — `.dmg`
+- macOS (Intel, `x86_64`) — `.dmg`
+- Windows (`x86_64`) — `.msi` / `.exe`
+
+Each release also ships a `SHA256SUMS.txt` you can use to verify the artifacts.
+
+> **Note:** these builds are **not code-signed**. See [First-time launch on macOS / Windows](#first-time-launch-on-macos--windows) below for how to open them safely.
+
+### Verifying the download (SHA256)
+
+```bash
+# macOS / Linux
+shasum -a 256 ComfyDownloader_*.dmg
+# Windows (PowerShell)
+Get-FileHash .\ComfyDownloader_*.msi -Algorithm SHA256
+```
+
+Compare the output against the matching line in `SHA256SUMS.txt`.
+
+### First-time launch on macOS / Windows
+
+Because the project does not (yet) pay for an Apple Developer ID or Windows EV certificate, the OS may warn you the first time you open the app. The binaries are built transparently from this repo by GitHub Actions — you can [inspect the workflow](.github/workflows/release.yml) and verify checksums above.
+
+**macOS** — if you see *"ComfyDownloader is damaged and can't be opened"* or *"can't be opened because Apple cannot check it for malicious software"*:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
+```
+
+Or right-click the app → **Open** → **Open** in the dialog.
+
+**Windows** — SmartScreen may show *"Windows protected your PC"*: click **More info** → **Run anyway**.
+
+## Prerequisites (development)
 
 - [Node.js](https://nodejs.org/) >= 18
 - [Rust](https://rustup.rs/) >= 1.77
