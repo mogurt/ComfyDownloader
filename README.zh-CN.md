@@ -22,8 +22,6 @@ ComfyDownloader 主要解决 ComfyUI 使用过程中最繁琐的那一段：找�
 
 ## 截图
 
-截图目前保留占位。你可以将图片放到 `docs/screenshots/` 下，并按下面的文件名更新展示：
-
 - `docs/screenshots/search.png` - 搜索与来源浏览
 - `docs/screenshots/downloads.png` - 下载队列与进度追踪
 - `docs/screenshots/workflow.png` - Workflow 模型依赖分析
@@ -80,7 +78,7 @@ Get-FileHash .\ComfyDownloader_*.msi -Algorithm SHA256
 
 由于项目目前没有使用 Apple Developer ID 签名或 Windows EV 证书，操作系统在首次启动时可能会弹出安全提示。所有二进制均由 GitHub Actions 基于本仓库构建，你可以在 [`release.yml`](.github/workflows/release.yml) 中查看对应流程。
 
-**macOS** - 如果出现 *"ComfyDownloader is damaged and can't be opened"* 或 *"Apple cannot check it for malicious software"*，通常是 Gatekeeper 拦截了未签名应用，并不代表 DMG 文件损坏。
+**macOS** - 如果出现 _"ComfyDownloader is damaged and can't be opened"_ 或 _"Apple cannot check it for malicious software"_，通常是 Gatekeeper 拦截了未签名应用，并不代表 DMG 文件损坏。
 
 1. 将 `ComfyDownloader.app` 拖到 `Applications`
 2. 运行：
@@ -93,7 +91,7 @@ xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 
 也可以右键应用并选择 **Open**。
 
-**Windows** - 如果 SmartScreen 提示 *"Windows protected your PC"*，点击 **More info** -> **Run anyway**。
+**Windows** - 如果 SmartScreen 提示 _"Windows protected your PC"_，点击 **More info** -> **Run anyway**。
 
 ## 技术栈
 

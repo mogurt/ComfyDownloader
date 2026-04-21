@@ -22,8 +22,6 @@ Instead of juggling browser tabs, model pages, and manual folder selection, the 
 
 ## Screenshots
 
-Screenshots are intentionally kept as placeholders for now. Add images under `docs/screenshots/` and update the links below when you are ready:
-
 - `docs/screenshots/search.png` - search and source browsing
 - `docs/screenshots/downloads.png` - download queue and progress tracking
 - `docs/screenshots/workflow.png` - workflow model dependency analysis
@@ -80,7 +78,7 @@ Compare the output against the matching line in `SHA256SUMS.txt`.
 
 Because the project does not yet use Apple Developer ID signing or a Windows EV certificate, the OS may warn you on first launch. The binaries are built from this repository by GitHub Actions, and you can inspect the workflow in [`release.yml`](.github/workflows/release.yml).
 
-**macOS** - If you see *"ComfyDownloader is damaged and can't be opened"* or *"Apple cannot check it for malicious software"*, this is usually Gatekeeper blocking an unsigned app, not a corrupted DMG.
+**macOS** - If you see _"ComfyDownloader is damaged and can't be opened"_ or _"Apple cannot check it for malicious software"_, this is usually Gatekeeper blocking an unsigned app, not a corrupted DMG.
 
 1. Drag `ComfyDownloader.app` into `Applications`
 2. Run:
@@ -93,7 +91,7 @@ xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 
 You can also right-click the app and choose **Open**.
 
-**Windows** - If SmartScreen shows *"Windows protected your PC"*, click **More info** -> **Run anyway**.
+**Windows** - If SmartScreen shows _"Windows protected your PC"_, click **More info** -> **Run anyway**.
 
 ## Tech Stack
 
@@ -180,4 +178,3 @@ Contributions are welcome, including bug fixes, workflow parser improvements, an
 - Opening an issue first is optional for straightforward fixes
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for more details.
-
