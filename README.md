@@ -49,13 +49,18 @@ Compare the output against the matching line in `SHA256SUMS.txt`.
 
 Because the project does not (yet) pay for an Apple Developer ID or Windows EV certificate, the OS may warn you the first time you open the app. The binaries are built transparently from this repo by GitHub Actions — you can [inspect the workflow](.github/workflows/release.yml) and verify checksums above.
 
-**macOS** — if you see *"ComfyDownloader is damaged and can't be opened"* or *"can't be opened because Apple cannot check it for malicious software"*:
+**macOS** — if you see *"ComfyDownloader is damaged and can't be opened"* or *"can't be opened because Apple cannot check it for malicious software"*, this is usually Gatekeeper blocking an unsigned app, not the DMG actually being corrupted.
+
+1. Drag `ComfyDownloader.app` into `Applications`.
+2. Run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 ```
 
-Or right-click the app → **Open** → **Open** in the dialog.
+3. Open the app again.
+
+If you prefer, you can also right-click the app → **Open** → **Open** in the dialog.
 
 **Windows** — SmartScreen may show *"Windows protected your PC"*: click **More info** → **Run anyway**.
 
