@@ -86,7 +86,15 @@ jobs:
           releaseBody: |
             Automated build from tag `${{ steps.tag.outputs.value }}`.
 
-            > These artifacts are **not code-signed**. See the README for instructions on how to open them on macOS / Windows the first time, and how to verify SHA256 checksums.
+            > These artifacts are **not code-signed**.
+            >
+            > On macOS, if you see "ComfyDownloader is damaged and can't be opened", that is usually Gatekeeper blocking an unsigned app, not the DMG actually being corrupted.
+            >
+            > Move `ComfyDownloader.app` into `Applications`, then run:
+            >
+            > `xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app`
+            >
+            > A `SHA256SUMS.txt` file is attached to this release so you can verify the downloaded artifacts.
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: false
