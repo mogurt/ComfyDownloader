@@ -195,25 +195,24 @@ fn parse_civitai_model(v: &serde_json::Value) -> Option<CivitaiModelInfo> {
 
     let versions_raw = v.get("modelVersions").and_then(|mv| mv.as_array());
 
-    let thumbnail_url = versions_raw
-        .and_then(|vs| {
-            vs.iter().find_map(|ver| {
-                ver.get("images")
-                    .and_then(|imgs| imgs.as_array())
-                    .and_then(|imgs| {
-                        imgs.iter().find_map(|img| {
-                            img.get("url").and_then(|u| u.as_str()).map(|s| {
-                                let url = s.to_string();
-                                if url.contains("/original=true") {
-                                    url.replace("/original=true", "/width=200")
-                                } else {
-                                    url
-                                }
-                            })
+    let thumbnail_url = versions_raw.and_then(|vs| {
+        vs.iter().find_map(|ver| {
+            ver.get("images")
+                .and_then(|imgs| imgs.as_array())
+                .and_then(|imgs| {
+                    imgs.iter().find_map(|img| {
+                        img.get("url").and_then(|u| u.as_str()).map(|s| {
+                            let url = s.to_string();
+                            if url.contains("/original=true") {
+                                url.replace("/original=true", "/width=200")
+                            } else {
+                                url
+                            }
                         })
                     })
-            })
-        });
+                })
+        })
+    });
 
     let model_versions: Vec<CivitaiVersionInfo> = versions_raw
         .map(|vs| {
@@ -289,8 +288,7 @@ fn build_client(proxy: Option<&str>) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder();
     if let Some(p) = proxy {
         if !p.is_empty() {
-            let proxy_obj =
-                reqwest::Proxy::all(p).map_err(|e| format!("Invalid proxy: {}", e))?;
+            let proxy_obj = reqwest::Proxy::all(p).map_err(|e| format!("Invalid proxy: {}", e))?;
             builder = builder.proxy(proxy_obj);
         }
     }
@@ -325,17 +323,12 @@ pub async fn search_hf_models(
     let client = build_client(proxy.as_deref())?;
     let actual_limit = limit.unwrap_or(20).min(100);
 
-    let mut request = client
-        .get(format!("{}/models", HF_API_BASE))
-        .query(&[
-            ("search", trimmed.to_string()),
-            ("limit", (actual_limit + 1).to_string()),
-            ("sort", sort.unwrap_or_else(|| "downloads".to_string())),
-            (
-                "direction",
-                direction.unwrap_or_else(|| "-1".to_string()),
-            ),
-        ]);
+    let mut request = client.get(format!("{}/models", HF_API_BASE)).query(&[
+        ("search", trimmed.to_string()),
+        ("limit", (actual_limit + 1).to_string()),
+        ("sort", sort.unwrap_or_else(|| "downloads".to_string())),
+        ("direction", direction.unwrap_or_else(|| "-1".to_string())),
+    ]);
 
     if let Some(off) = offset {
         if off > 0 {
@@ -478,7 +471,10 @@ pub async fn search_civitai_models(
     let mut params: Vec<(&str, String)> = vec![
         ("query", trimmed.to_string()),
         ("limit", actual_limit.to_string()),
-        ("sort", sort.unwrap_or_else(|| "Most Downloaded".to_string())),
+        (
+            "sort",
+            sort.unwrap_or_else(|| "Most Downloaded".to_string()),
+        ),
         ("period", period.unwrap_or_else(|| "AllTime".to_string())),
         ("nsfw", "false".to_string()),
     ];

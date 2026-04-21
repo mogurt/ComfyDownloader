@@ -12,7 +12,10 @@ pub type Aria2RpcState = Arc<Mutex<Option<Aria2Rpc>>>;
 
 async fn get_rpc(rpc_state: &Aria2RpcState) -> Result<Aria2Rpc, String> {
     let guard = rpc_state.lock().await;
-    guard.as_ref().cloned().ok_or_else(|| "aria2 RPC not connected".to_string())
+    guard
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "aria2 RPC not connected".to_string())
 }
 
 #[tauri::command]
@@ -71,9 +74,7 @@ pub async fn create_download(
 
     info!("Creating download: {} -> {}/{}", url, dir, filename);
 
-    let gid = rpc
-        .add_uri(vec![url], &dir, &filename, headers)
-        .await?;
+    let gid = rpc.add_uri(vec![url], &dir, &filename, headers).await?;
 
     info!("Download created with GID: {}", gid);
     Ok(gid)

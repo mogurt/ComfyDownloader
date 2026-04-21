@@ -34,14 +34,20 @@ pub async fn parse(
 
     if let Some(vid) = &version_id {
         if let Ok(metadata) = fetch_version_metadata(&client, vid, token).await {
-            if let Some(t) = metadata.get("model").and_then(|m| m.get("type")).and_then(|t| t.as_str()) {
+            if let Some(t) = metadata
+                .get("model")
+                .and_then(|m| m.get("type"))
+                .and_then(|t| t.as_str())
+            {
                 suggested_type = map_civitai_type(t);
             }
 
             if let Some(files) = metadata.get("files").and_then(|f| f.as_array()) {
-                if let Some(primary) = files.iter().find(|f| {
-                    f.get("primary").and_then(|p| p.as_bool()).unwrap_or(false)
-                }).or_else(|| files.first()) {
+                if let Some(primary) = files
+                    .iter()
+                    .find(|f| f.get("primary").and_then(|p| p.as_bool()).unwrap_or(false))
+                    .or_else(|| files.first())
+                {
                     if let Some(name) = primary.get("name").and_then(|n| n.as_str()) {
                         filename = name.to_string();
                     }
@@ -77,11 +83,10 @@ pub async fn parse(
 
 fn extract_version_id(url: &str) -> Option<String> {
     let re = Regex::new(r"/api/download/models/(\d+)").ok()?;
-    re.captures(url).map(|c| c[1].to_string())
-        .or_else(|| {
-            let re2 = Regex::new(r"modelVersionId=(\d+)").ok()?;
-            re2.captures(url).map(|c| c[1].to_string())
-        })
+    re.captures(url).map(|c| c[1].to_string()).or_else(|| {
+        let re2 = Regex::new(r"modelVersionId=(\d+)").ok()?;
+        re2.captures(url).map(|c| c[1].to_string())
+    })
 }
 
 async fn fetch_version_metadata(
@@ -144,7 +149,9 @@ fn extract_filename_from_content_disposition(cd: &str) -> Option<String> {
     let re = Regex::new(r#"filename\*?=(?:UTF-8''|"?)([^";]+)"?"#).ok()?;
     re.captures(cd).map(|c| {
         let name = c[1].to_string();
-        urlencoding::decode(&name).unwrap_or(name.clone().into()).to_string()
+        urlencoding::decode(&name)
+            .unwrap_or(name.clone().into())
+            .to_string()
     })
 }
 
@@ -168,7 +175,8 @@ fn guess_type_from_filename(filename: &str) -> Option<String> {
         Some("vae".to_string())
     } else if lower.contains("controlnet") || lower.contains("control_") {
         Some("controlnet".to_string())
-    } else if lower.contains("upscale") || lower.contains("esrgan") || lower.contains("realesrgan") {
+    } else if lower.contains("upscale") || lower.contains("esrgan") || lower.contains("realesrgan")
+    {
         Some("upscale_model".to_string())
     } else if lower.contains("ip-adapter") || lower.contains("ipadapter") {
         Some("ipadapter".to_string())
@@ -186,13 +194,11 @@ fn guess_type_from_filename(filename: &str) -> Option<String> {
 }
 
 fn build_client(proxy: Option<&str>, _headers: &HeaderMap) -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10));
+    let mut builder = reqwest::Client::builder().redirect(reqwest::redirect::Policy::limited(10));
 
     if let Some(p) = proxy {
         if !p.is_empty() {
-            let proxy_obj =
-                reqwest::Proxy::all(p).map_err(|e| format!("Invalid proxy: {}", e))?;
+            let proxy_obj = reqwest::Proxy::all(p).map_err(|e| format!("Invalid proxy: {}", e))?;
             builder = builder.proxy(proxy_obj);
         }
     }
@@ -200,4 +206,54 @@ fn build_client(proxy: Option<&str>, _headers: &HeaderMap) -> Result<reqwest::Cl
     builder
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        extract_filename_from_content_disposition, extract_version_id, guess_type_from_filename,
+        map_civitai_type,
+    };
+
+    #[test]
+    fn extracts_version_id_from_supported_urls() {
+        assert_eq!(
+            extract_version_id("https://civitai.com/api/download/models/12345"),
+            Some("12345".to_string())
+        );
+        assert_eq!(
+            extract_version_id("https://civitai.com/models/1/foo?modelVersionId=67890"),
+            Some("67890".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_content_disposition_filenames() {
+        let filename = extract_filename_from_content_disposition(
+            "attachment; filename*=UTF-8''flux%20model.safetensors",
+        );
+        assert_eq!(filename, Some("flux model.safetensors".to_string()));
+    }
+
+    #[test]
+    fn maps_known_civitai_types() {
+        assert_eq!(map_civitai_type("LoRA"), Some("lora".to_string()));
+        assert_eq!(
+            map_civitai_type("TextualInversion"),
+            Some("embedding".to_string())
+        );
+        assert_eq!(map_civitai_type("unknown"), None);
+    }
+
+    #[test]
+    fn guesses_types_from_filename_keywords() {
+        assert_eq!(
+            guess_type_from_filename("my-ip-adapter.safetensors"),
+            Some("ipadapter".to_string())
+        );
+        assert_eq!(
+            guess_type_from_filename("controlnet-xl.safetensors"),
+            Some("controlnet".to_string())
+        );
+    }
 }

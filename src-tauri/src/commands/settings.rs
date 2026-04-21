@@ -103,7 +103,10 @@ pub fn list_subdirs(base_dir: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn resolve_relative_subdir(base_dir: String, relative_subdir: String) -> Result<String, String> {
+pub fn resolve_relative_subdir(
+    base_dir: String,
+    relative_subdir: String,
+) -> Result<String, String> {
     let base_path = PathBuf::from(&base_dir);
     if !base_path.exists() || !base_path.is_dir() {
         return Err(format!("Base directory does not exist: {}", base_dir));
@@ -116,7 +119,9 @@ pub fn resolve_relative_subdir(base_dir: String, relative_subdir: String) -> Res
 
     let relative_path = Path::new(trimmed);
     if relative_path.is_absolute() {
-        return Err("Subdirectory must be a relative path inside the model base directory".to_string());
+        return Err(
+            "Subdirectory must be a relative path inside the model base directory".to_string(),
+        );
     }
 
     for component in relative_path.components() {
@@ -134,7 +139,10 @@ pub fn resolve_relative_subdir(base_dir: String, relative_subdir: String) -> Res
     let target_path = canonical_base.join(relative_path);
 
     if !target_path.exists() || !target_path.is_dir() {
-        return Err(format!("Directory does not exist: {}", target_path.display()));
+        return Err(format!(
+            "Directory does not exist: {}",
+            target_path.display()
+        ));
     }
 
     let canonical_target = target_path

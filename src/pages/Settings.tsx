@@ -88,9 +88,7 @@ export default function Settings() {
   const handlePickComfyRoot = async () => {
     try {
       const selected = await open({ directory: true, title: t("settings.comfyRoot") });
-      console.log("[Dialog] ComfyUI root raw return:", selected, typeof selected);
       const dirPath = extractPath(selected);
-      console.log("[Dialog] ComfyUI root extracted:", dirPath);
       if (dirPath) {
         await updateSetting("comfyui_root", dirPath);
       }
@@ -102,9 +100,7 @@ export default function Settings() {
   const handlePickModelBaseDir = async () => {
     try {
       const selected = await open({ directory: true, title: t("settings.modelBase") });
-      console.log("[Dialog] Model base dir raw return:", selected, typeof selected);
       const dirPath = extractPath(selected);
-      console.log("[Dialog] Model base dir extracted:", dirPath);
       if (dirPath) {
         await updateSetting("model_base_dir", dirPath);
       }

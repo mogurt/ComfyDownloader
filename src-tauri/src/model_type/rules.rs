@@ -47,7 +47,10 @@ fn builtin_suggest(filename: &str, url: &str) -> String {
         (&["lora", "loha", "locon"], "lora"),
         (&["vae"], "vae"),
         (&["controlnet", "control_v11", "control_"], "controlnet"),
-        (&["upscale", "esrgan", "realesrgan", "swinir"], "upscale_model"),
+        (
+            &["upscale", "esrgan", "realesrgan", "swinir"],
+            "upscale_model",
+        ),
         (&["ip-adapter", "ipadapter", "ip_adapter"], "ipadapter"),
         (&["text_encoder", "clip_l", "clip_g", "t5xxl"], "clip"),
         (&["embedding", "embed", "textual_inversion"], "embedding"),
@@ -74,4 +77,55 @@ fn builtin_suggest(filename: &str, url: &str) -> String {
     }
 
     "custom".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{builtin_suggest, suggest_model_type, UserRule};
+
+    #[test]
+    fn user_rules_take_priority_over_builtin_logic() {
+        let rules = vec![UserRule {
+            id: 1,
+            rule_type: "filename".to_string(),
+            keyword: "special".to_string(),
+            model_type: "vae".to_string(),
+            priority: 10,
+            enabled: true,
+        }];
+
+        let guessed = suggest_model_type("my-special-model.safetensors", "", None, &rules);
+        assert_eq!(guessed, "vae");
+    }
+
+    #[test]
+    fn disabled_rules_are_ignored() {
+        let rules = vec![UserRule {
+            id: 1,
+            rule_type: "filename".to_string(),
+            keyword: "special".to_string(),
+            model_type: "vae".to_string(),
+            priority: 10,
+            enabled: false,
+        }];
+
+        let guessed = suggest_model_type("my-special-model.safetensors", "", None, &rules);
+        assert_eq!(guessed, "checkpoint");
+    }
+
+    #[test]
+    fn api_type_is_used_when_valid() {
+        let guessed = suggest_model_type("anything.bin", "", Some("controlnet"), &[]);
+        assert_eq!(guessed, "controlnet");
+    }
+
+    #[test]
+    fn builtin_suggest_handles_common_model_names() {
+        assert_eq!(
+            builtin_suggest("flux-unet.safetensors", ""),
+            "diffusion_model"
+        );
+        assert_eq!(builtin_suggest("style-lora.safetensors", ""), "lora");
+        assert_eq!(builtin_suggest("random-file.txt", ""), "custom");
+    }
 }

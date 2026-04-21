@@ -1,6 +1,6 @@
 pub mod civitai;
-pub mod huggingface;
 pub mod generic;
+pub mod huggingface;
 
 use serde::{Deserialize, Serialize};
 use url::Url;

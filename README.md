@@ -1,10 +1,37 @@
 # ComfyDownloader
 
+[简体中文](README.zh-CN.md)
+
 A desktop application for downloading AI models to the correct ComfyUI directories, powered by aria2.
+
+[![CI](https://github.com/mogurt/ComfyDownloader/actions/workflows/ci.yml/badge.svg)](https://github.com/mogurt/ComfyDownloader/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mogurt/ComfyDownloader)](https://github.com/mogurt/ComfyDownloader/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## Why This Project
+
+ComfyDownloader is built for the annoying part of the ComfyUI workflow: finding a model, figuring out what type it is, choosing the correct subdirectory, and downloading it reliably.
+
+Instead of juggling browser tabs, model pages, and manual folder selection, the app focuses on a tighter flow:
+
+- Search models from Hugging Face and Civitai in one desktop app
+- Parse URLs and suggest the correct ComfyUI model type
+- Route downloads into the right model directory
+- Track resumable downloads with aria2
+- Inspect workflow files to see which models are missing locally
+
+## Screenshots
+
+Screenshots are intentionally kept as placeholders for now. Add images under `docs/screenshots/` and update the links below when you are ready:
+
+- `docs/screenshots/search.png` - search and source browsing
+- `docs/screenshots/downloads.png` - download queue and progress tracking
+- `docs/screenshots/workflow.png` - workflow model dependency analysis
+- `docs/screenshots/settings.png` - directory mapping and token settings
 
 ## Features
 
-- **Smart URL parsing** - Automatically extracts filenames and metadata from Civitai, HuggingFace, and direct links
+- **Smart URL parsing** - Automatically extracts filenames and metadata from Civitai, Hugging Face, and direct links
 - **Model type recommendation** - Suggests the correct model type based on filename, URL, and source API metadata
 - **Directory mapping** - Automatically routes downloads to the correct ComfyUI model subdirectory
 - **aria2-powered downloads** - Concurrent, resumable downloads with real-time progress tracking
@@ -13,32 +40,36 @@ A desktop application for downloading AI models to the correct ComfyUI directori
 - **Custom rules** - Define keyword-based rules for automatic model type classification
 - **Proxy support** - HTTP/SOCKS5 proxy for downloading behind firewalls
 - **ComfyUI integration** - Verify models are recognized by a running ComfyUI instance
+- **Workflow parser** - Analyze ComfyUI workflow JSON and check which models are missing locally
 
-## Tech Stack
+## Quick Start
 
-- **Frontend**: React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui
-- **Backend**: Tauri v2 (Rust)
-- **Download Engine**: aria2c (embedded sidecar)
-- **Database**: SQLite (via tauri-plugin-sql)
-- **State Management**: Zustand
+1. Download the latest build from [Releases](https://github.com/mogurt/ComfyDownloader/releases).
+2. Open the app and configure your `ComfyUI root` or `model base directory`.
+3. Paste a model URL or search from Hugging Face / Civitai.
+4. Confirm the suggested model type and target directory.
+5. Start the download and track progress from the Downloads page.
 
-## Download
+## Platform Support
 
-Pre-built binaries are published on the [Releases](../../releases) page for:
+Pre-built binaries are currently published for:
 
-- macOS (Apple Silicon, `aarch64`) — `.dmg`
-- macOS (Intel, `x86_64`) — `.dmg`
-- Windows (`x86_64`) — `.msi` / `.exe`
+- macOS (Apple Silicon, `aarch64`) - `.dmg`
+- macOS (Intel, `x86_64`) - `.dmg`
+- Windows (`x86_64`) - `.msi` / `.exe`
 
-Each release also ships a `SHA256SUMS.txt` you can use to verify the artifacts.
+Linux packaging is planned, but it is not officially supported yet.
 
-> **Note:** these builds are **not code-signed**. See [First-time launch on macOS / Windows](#first-time-launch-on-macos--windows) below for how to open them safely.
+Each release also ships a `SHA256SUMS.txt` file for artifact verification.
+
+> These builds are **not code-signed** yet. See [First-time launch on macOS / Windows](#first-time-launch-on-macos--windows).
 
 ### Verifying the download (SHA256)
 
 ```bash
 # macOS / Linux
 shasum -a 256 ComfyDownloader_*.dmg
+
 # Windows (PowerShell)
 Get-FileHash .\ComfyDownloader_*.msi -Algorithm SHA256
 ```
@@ -47,53 +78,77 @@ Compare the output against the matching line in `SHA256SUMS.txt`.
 
 ### First-time launch on macOS / Windows
 
-Because the project does not (yet) pay for an Apple Developer ID or Windows EV certificate, the OS may warn you the first time you open the app. The binaries are built transparently from this repo by GitHub Actions — you can [inspect the workflow](.github/workflows/release.yml) and verify checksums above.
+Because the project does not yet use Apple Developer ID signing or a Windows EV certificate, the OS may warn you on first launch. The binaries are built from this repository by GitHub Actions, and you can inspect the workflow in [`release.yml`](.github/workflows/release.yml).
 
-**macOS** — if you see *"ComfyDownloader is damaged and can't be opened"* or *"can't be opened because Apple cannot check it for malicious software"*, this is usually Gatekeeper blocking an unsigned app, not the DMG actually being corrupted.
+**macOS** - If you see *"ComfyDownloader is damaged and can't be opened"* or *"Apple cannot check it for malicious software"*, this is usually Gatekeeper blocking an unsigned app, not a corrupted DMG.
 
-1. Drag `ComfyDownloader.app` into `Applications`.
+1. Drag `ComfyDownloader.app` into `Applications`
 2. Run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 ```
 
-3. Open the app again.
+3. Open the app again
 
-If you prefer, you can also right-click the app → **Open** → **Open** in the dialog.
+You can also right-click the app and choose **Open**.
 
-**Windows** — SmartScreen may show *"Windows protected your PC"*: click **More info** → **Run anyway**.
+**Windows** - If SmartScreen shows *"Windows protected your PC"*, click **More info** -> **Run anyway**.
 
-## Prerequisites (development)
+## Tech Stack
 
-- [Node.js](https://nodejs.org/) >= 18
+- **Frontend**: React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui
+- **Backend**: Tauri v2 (Rust)
+- **Download Engine**: aria2c (embedded sidecar)
+- **Database**: SQLite via `tauri-plugin-sql`
+- **State Management**: Zustand
+
+## Development
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) >= 20
 - [Rust](https://rustup.rs/) >= 1.77
 - Windows 10+ or macOS
 
-## Development
+### Local setup
 
 ```bash
 # Install dependencies
 npm install
 
-# Manually prepare aria2c again if needed
+# Re-download aria2c if needed
 npm run prepare:aria2
 
-# Run in development mode (starts both Vite dev server and Tauri)
+# Start Vite + Tauri
 npm run tauri dev
 
-# Build for production
+# Build production app
 npm run tauri build
 ```
 
 `npm install` automatically downloads the required `aria2c` sidecar into `src-tauri/binaries/` for supported Windows and macOS targets.
 
+Useful checks:
+
+```bash
+npm run lint
+npm run typecheck
+cd src-tauri && cargo test
+```
+
+## Security Notes
+
+- Hugging Face and Civitai access tokens are currently stored in the local SQLite settings database. Avoid reusing highly privileged tokens.
+- Releases are not code-signed yet. Verify checksums before first launch.
+- For security-sensitive reports, follow [`SECURITY.md`](SECURITY.md) instead of opening a public issue.
+
 ## Project Structure
 
-```
+```text
 src/                    # React frontend
   components/           # UI components
-  pages/                # Home and Settings pages
+  pages/                # Downloads, Search, Workflow, Settings
   stores/               # Zustand state management
   hooks/                # Custom React hooks
   lib/                  # Types, API wrappers, utilities
@@ -102,9 +157,27 @@ src-tauri/              # Rust backend
   src/
     aria2/              # aria2 process management and RPC client
     commands/           # Tauri command handlers
-    url_parser/         # URL parsing for Civitai, HuggingFace, etc.
+    url_parser/         # URL parsing for Civitai, Hugging Face, etc.
     model_type/         # Model type recommendation engine
     db/                 # SQLite migrations
   binaries/             # aria2c sidecar binary
 ```
+
+## Roadmap
+
+- Improve release polish for public users
+- Expand workflow parsing coverage for more ComfyUI node patterns
+- Improve token handling and local secret storage
+- Add official Linux packaging support
+- Add richer screenshots and onboarding docs
+
+## Contributing
+
+Contributions are welcome, including bug fixes, workflow parser improvements, and i18n updates.
+
+- Start from the `dev` branch for normal contribution work
+- Conventional Commits are preferred (`feat:`, `fix:`, `docs:`, `chore:`)
+- Opening an issue first is optional for straightforward fixes
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for more details.
 

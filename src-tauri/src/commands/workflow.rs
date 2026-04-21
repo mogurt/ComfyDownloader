@@ -113,10 +113,7 @@ fn extract_models_litegraph_format(root: &serde_json::Value) -> (Vec<WorkflowMod
     let node_count = nodes.len();
 
     for node in nodes {
-        let node_type = node
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let node_type = node.get("type").and_then(|v| v.as_str()).unwrap_or("");
         let type_hint = class_type_to_model_type(node_type).map(|s| s.to_string());
 
         if let Some(widgets) = node.get("widgets_values").and_then(|v| v.as_array()) {
@@ -150,10 +147,8 @@ fn detect_and_extract(root: &serde_json::Value) -> (Vec<WorkflowModelRef>, usize
         (models, count, "litegraph".to_string())
     } else {
         let obj = root.as_object();
-        let looks_like_api = obj.map_or(false, |o| {
-            o.values()
-                .any(|v| v.get("class_type").is_some())
-        });
+        let looks_like_api =
+            obj.map_or(false, |o| o.values().any(|v| v.get("class_type").is_some()));
 
         if looks_like_api {
             let (models, count) = extract_models_api_format(root);
@@ -239,7 +234,10 @@ pub async fn parse_workflow_file(file_path: String) -> Result<ParseWorkflowResul
 
     info!(
         "Parsed workflow file {} ({}): {} nodes, {} model refs",
-        file_path, format, node_count, models.len()
+        file_path,
+        format,
+        node_count,
+        models.len()
     );
 
     Ok(ParseWorkflowResult {
@@ -268,11 +266,7 @@ pub async fn check_models_local(
         return Err(format!("Directory not found: {}", base_dir));
     }
 
-    info!(
-        "Checking {} models in {}",
-        filenames.len(),
-        base_dir
-    );
+    info!("Checking {} models in {}", filenames.len(), base_dir);
 
     let mut index: HashMap<String, String> = HashMap::new();
     build_file_index(base, &mut index);
@@ -297,11 +291,7 @@ pub async fn check_models_local(
         .collect();
 
     let found_count = results.iter().filter(|r| r.found).count();
-    info!(
-        "Local check: {}/{} found",
-        found_count,
-        results.len()
-    );
+    info!("Local check: {}/{} found", found_count, results.len());
 
     Ok(results)
 }
@@ -371,11 +361,7 @@ pub async fn scan_workflow_dir(comfyui_root: String) -> Result<Vec<WorkflowFileI
     Ok(results)
 }
 
-fn collect_json_files(
-    dir: &Path,
-    results: &mut Vec<WorkflowFileInfo>,
-    seen: &mut HashSet<String>,
-) {
+fn collect_json_files(dir: &Path, results: &mut Vec<WorkflowFileInfo>, seen: &mut HashSet<String>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -392,9 +378,7 @@ fn collect_json_files(
                         let size = meta.as_ref().map_or(0, |m| m.len());
                         let modified = meta
                             .and_then(|m| m.modified().ok())
-                            .and_then(|t| {
-                                t.duration_since(std::time::UNIX_EPOCH).ok()
-                            })
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                             .map(|d| d.as_secs().to_string());
                         let filename = path
                             .file_name()
@@ -413,5 +397,59 @@ fn collect_json_files(
         } else if path.is_dir() {
             collect_json_files(&path, results, seen);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detect_and_extract;
+    use serde_json::json;
+
+    #[test]
+    fn detects_api_workflow_models() {
+        let workflow = json!({
+            "1": {
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {
+                    "ckpt_name": "checkpoints/flux.safetensors"
+                }
+            },
+            "2": {
+                "class_type": "LoraLoader",
+                "inputs": {
+                    "lora_name": "loras/style.safetensors"
+                }
+            }
+        });
+
+        let (models, node_count, format) = detect_and_extract(&workflow);
+        assert_eq!(format, "api");
+        assert_eq!(node_count, 2);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].filename, "flux.safetensors");
+        assert_eq!(models[1].filename, "style.safetensors");
+    }
+
+    #[test]
+    fn detects_litegraph_workflow_models() {
+        let workflow = json!({
+            "nodes": [
+                {
+                    "type": "UNETLoader",
+                    "widgets_values": ["models/unet/flux1-dev.safetensors"]
+                }
+            ],
+            "links": []
+        });
+
+        let (models, node_count, format) = detect_and_extract(&workflow);
+        assert_eq!(format, "litegraph");
+        assert_eq!(node_count, 1);
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].filename, "flux1-dev.safetensors");
+        assert_eq!(
+            models[0].model_type_hint.as_deref(),
+            Some("diffusion_model")
+        );
     }
 }

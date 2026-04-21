@@ -117,10 +117,19 @@ async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
     let secret: String = uuid::Uuid::new_v4().to_string().replace("-", "");
 
     info!(
-        "Setting up aria2: path={}, port={}", aria2_path.display(), port
+        "Setting up aria2: path={}, port={}",
+        aria2_path.display(),
+        port
     );
 
-    let process = Arc::new(Aria2Process::new(aria2_path, port, secret.clone(), 3, 16, None));
+    let process = Arc::new(Aria2Process::new(
+        aria2_path,
+        port,
+        secret.clone(),
+        3,
+        16,
+        None,
+    ));
     process.start(&app_handle).await?;
 
     let process_state: tauri::State<'_, Aria2ProcessState> = app_handle.state();
