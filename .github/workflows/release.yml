@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            os: macos-14
+            rust-target: aarch64-apple-darwin
+            tauri-args: --target aarch64-apple-darwin
+          - label: macos-x64
+            os: macos-13
+            rust-target: x86_64-apple-darwin
+            tauri-args: --target x86_64-apple-darwin
+          - label: windows-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            tauri-args: ""
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache Cargo registry & build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.label }}-release
+
+      - name: Install npm dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm ci
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & publish via tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.tag.outputs.value }}
+          releaseName: "ComfyDownloader ${{ steps.tag.outputs.value }}"
+          releaseBody: |
+            Automated build from tag `${{ steps.tag.outputs.value }}`.
+
+            > These artifacts are **not code-signed**.
+            >
+            > On macOS, if you see "ComfyDownloader is damaged and can't be opened", that is usually Gatekeeper blocking an unsigned app, not the DMG actually being corrupted.
+            >
+            > Move `ComfyDownloader.app` into `Applications`, then run:
+            >
+            > `xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app`
+            >
+            > A `SHA256SUMS.txt` file is attached to this release so you can verify the downloaded artifacts.
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: false
+          args: ${{ matrix.tauri-args }}
+
+  checksums:
+    name: Generate SHA256 checksums
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ steps.tag.outputs.value }}" \
+            --repo "${{ github.repository }}" \
+            --dir dist \
+            --pattern '*.dmg' \
+            --pattern '*.app.tar.gz' \
+            --pattern '*.msi' \
+            --pattern '*.exe' \
+            --pattern '*.AppImage' \
+            --pattern '*.deb'
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          files=(*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No artifacts found to checksum." >&2
+            exit 0
+          fi
+          sha256sum "${files[@]}" | tee SHA256SUMS.txt
+
+      - name: Upload SHA256SUMS.txt to release
+        if: hashFiles('dist/SHA256SUMS.txt') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ steps.tag.outputs.value }}" \
+            dist/SHA256SUMS.txt \
+            --repo "${{ github.repository }}" \
+            --clobber
