@@ -126,9 +126,7 @@ jobs:
             --pattern '*.dmg' \
             --pattern '*.app.tar.gz' \
             --pattern '*.msi' \
-            --pattern '*.exe' \
-            --pattern '*.AppImage' \
-            --pattern '*.deb'
+            --pattern '*.exe'
 
       - name: Generate SHA256SUMS.txt
         working-directory: dist

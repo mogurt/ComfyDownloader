@@ -1,13 +1,37 @@
 {
   "name": "comfy-downloader",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A desktop application for downloading AI models to the correct ComfyUI directories, powered by aria2.",
+  "license": "MIT",
+  "author": "Li Kaixuan <mcyogurtg@gmail.com>",
   "type": "module",
+  "homepage": "https://github.com/mogurt/ComfyDownloader#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mogurt/ComfyDownloader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mogurt/ComfyDownloader/issues"
+  },
+  "keywords": [
+    "comfyui",
+    "ai-models",
+    "huggingface",
+    "civitai",
+    "model-download",
+    "desktop-app",
+    "tauri"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:tauri": "node scripts/cleanup-tauri-dmg.mjs && npm run build",
     "lint": "eslint .",
+    "typecheck": "tsc -b",
     "preview": "vite preview",
     "prepare:aria2": "node scripts/prepare-aria2.mjs",
     "postinstall": "node scripts/prepare-aria2.mjs",

@@ -36,10 +36,7 @@ pub async fn check_comfyui_status(server_url: String) -> Result<ComfyUIStatus, S
 }
 
 #[tauri::command]
-pub async fn verify_model_in_comfyui(
-    server_url: String,
-    filename: String,
-) -> Result<bool, String> {
+pub async fn verify_model_in_comfyui(server_url: String, filename: String) -> Result<bool, String> {
     let url = format!("{}/object_info", server_url.trim_end_matches('/'));
 
     let client = reqwest::Client::builder()

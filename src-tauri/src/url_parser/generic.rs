@@ -40,7 +40,8 @@ fn guess_type(filename: &str) -> Option<String> {
         Some("vae".to_string())
     } else if lower.contains("controlnet") || lower.contains("control_") {
         Some("controlnet".to_string())
-    } else if lower.contains("upscale") || lower.contains("esrgan") || lower.contains("realesrgan") {
+    } else if lower.contains("upscale") || lower.contains("esrgan") || lower.contains("realesrgan")
+    {
         Some("upscale_model".to_string())
     } else if lower.contains("ip-adapter") || lower.contains("ipadapter") {
         Some("ipadapter".to_string())
@@ -50,7 +51,10 @@ fn guess_type(filename: &str) -> Option<String> {
         Some("embedding".to_string())
     } else if lower.contains("flux") || lower.contains("sd3") {
         Some("diffusion_model".to_string())
-    } else if lower.ends_with(".safetensors") || lower.ends_with(".ckpt") || lower.ends_with(".gguf") {
+    } else if lower.ends_with(".safetensors")
+        || lower.ends_with(".ckpt")
+        || lower.ends_with(".gguf")
+    {
         Some("checkpoint".to_string())
     } else {
         None
@@ -61,8 +65,7 @@ async fn fetch_content_length(url: &str, proxy: Option<&str>) -> Result<u64, Str
     let mut builder = reqwest::Client::builder();
     if let Some(p) = proxy {
         if !p.is_empty() {
-            let proxy_obj =
-                reqwest::Proxy::all(p).map_err(|e| format!("Invalid proxy: {}", e))?;
+            let proxy_obj = reqwest::Proxy::all(p).map_err(|e| format!("Invalid proxy: {}", e))?;
             builder = builder.proxy(proxy_obj);
         }
     }

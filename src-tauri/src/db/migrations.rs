@@ -2,10 +2,10 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub fn get_migrations() -> Vec<Migration> {
     vec![
-    Migration {
-        version: 1,
-        description: "initial schema",
-        sql: r#"
+        Migration {
+            version: 1,
+            description: "initial schema",
+            sql: r#"
             CREATE TABLE IF NOT EXISTS downloads (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 gid         TEXT,
@@ -55,39 +55,39 @@ pub fn get_migrations() -> Vec<Migration> {
                 ('download_speed_limit', '0'),
                 ('auto_verify_comfyui', 'false');
         "#,
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 2,
-        description: "add model_base_dir setting",
-        sql: r#"
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "add model_base_dir setting",
+            sql: r#"
             INSERT OR IGNORE INTO settings (key, value) VALUES ('model_base_dir', '');
         "#,
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 3,
-        description: "add theme setting",
-        sql: r#"
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add theme setting",
+            sql: r#"
             INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'system');
         "#,
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 4,
-        description: "add language setting",
-        sql: r#"
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "add language setting",
+            sql: r#"
             INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'en');
         "#,
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 5,
-        description: "add huggingface token setting",
-        sql: r#"
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "add huggingface token setting",
+            sql: r#"
             INSERT OR IGNORE INTO settings (key, value) VALUES ('huggingface_token', '');
         "#,
-        kind: MigrationKind::Up,
-    },
+            kind: MigrationKind::Up,
+        },
     ]
 }

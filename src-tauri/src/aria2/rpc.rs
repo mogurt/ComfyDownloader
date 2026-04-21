@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{mpsc, Mutex, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,9 +257,7 @@ impl Aria2Rpc {
     }
 
     pub async fn tell_status(&self, gid: &str) -> Result<Aria2Status, String> {
-        let result = self
-            .call("aria2.tellStatus", vec![json!(gid)])
-            .await?;
+        let result = self.call("aria2.tellStatus", vec![json!(gid)]).await?;
 
         serde_json::from_value(result).map_err(|e| format!("Failed to parse status: {}", e))
     }
@@ -270,7 +268,9 @@ impl Aria2Rpc {
     }
 
     pub async fn tell_waiting(&self, offset: i32, num: i32) -> Result<Vec<Aria2Status>, String> {
-        let result = self.call("aria2.tellWaiting", vec![json!(offset), json!(num)]).await?;
+        let result = self
+            .call("aria2.tellWaiting", vec![json!(offset), json!(num)])
+            .await?;
         serde_json::from_value(result).map_err(|e| format!("Failed to parse waiting list: {}", e))
     }
 

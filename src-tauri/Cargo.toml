@@ -1,8 +1,8 @@
 [package]
 name = "comfy-downloader"
 version = "0.1.0"
-description = "ComfyDownloader"
-authors = ["you"]
+description = "A desktop application for downloading AI models to the correct ComfyUI directories, powered by aria2."
+authors = ["Li Kaixuan <mcyogurtg@gmail.com>"]
 license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"

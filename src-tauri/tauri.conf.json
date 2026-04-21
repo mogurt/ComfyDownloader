@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ComfyDownloader",
   "version": "0.1.0",
-  "identifier": "com.comfydownloader",
+  "identifier": "io.github.mogurt.comfydownloader",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' asset: http://asset.localhost https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:* file:; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob: https://civitai.com https://*.civitai.com https://huggingface.co https://*.huggingface.co https://hf-mirror.com https://*.hf-mirror.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
     }
   },
   "bundle": {

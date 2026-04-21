@@ -6,10 +6,6 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    "shell:allow-execute",
-    "shell:allow-spawn",
-    "shell:allow-stdin-write",
-    "shell:allow-kill",
     "dialog:allow-open",
     "dialog:allow-message",
     "dialog:allow-ask",

@@ -13,8 +13,7 @@ pub async fn parse(
     let url = Url::parse(raw_url).map_err(|e| format!("Invalid URL: {}", e))?;
     let path = url.path();
 
-    let filename = extract_filename_from_path(path)
-        .unwrap_or_else(|| extract_last_segment(path));
+    let filename = extract_filename_from_path(path).unwrap_or_else(|| extract_last_segment(path));
 
     let suggested_type = guess_type(&filename, path);
 
@@ -74,7 +73,11 @@ fn guess_type(filename: &str, path: &str) -> Option<String> {
         Some("embedding".to_string())
     } else if combined.contains("flux") || combined.contains("sd3") || combined.contains("unet") {
         Some("diffusion_model".to_string())
-    } else if lower.ends_with(".safetensors") || lower.ends_with(".ckpt") || lower.ends_with(".bin") || lower.ends_with(".gguf") {
+    } else if lower.ends_with(".safetensors")
+        || lower.ends_with(".ckpt")
+        || lower.ends_with(".bin")
+        || lower.ends_with(".gguf")
+    {
         Some("checkpoint".to_string())
     } else {
         None
@@ -93,7 +96,9 @@ async fn fetch_content_length(
             builder = builder.proxy(proxy_obj);
         }
     }
-    let client = builder.build().map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = builder
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
 
     let mut request = client.head(url);
     if let Some(t) = token {
@@ -112,4 +117,38 @@ async fn fetch_content_length(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
         .ok_or_else(|| "No content-length header".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_filename_from_path, guess_type};
+
+    #[test]
+    fn extracts_filenames_from_resolve_paths() {
+        let filename =
+            extract_filename_from_path("/org/model/resolve/main/loras/style/my-model.safetensors");
+        assert_eq!(filename, Some("my-model.safetensors".to_string()));
+    }
+
+    #[test]
+    fn guesses_types_from_filename_and_path() {
+        assert_eq!(
+            guess_type(
+                "clip_l.safetensors",
+                "/org/model/resolve/main/text_encoder/clip_l.safetensors"
+            ),
+            Some("clip".to_string())
+        );
+        assert_eq!(
+            guess_type(
+                "flux1-dev.safetensors",
+                "/org/model/resolve/main/unet/flux1-dev.safetensors"
+            ),
+            Some("diffusion_model".to_string())
+        );
+        assert_eq!(
+            guess_type("model.gguf", "/org/model/resolve/main/model.gguf"),
+            Some("checkpoint".to_string())
+        );
+    }
 }

@@ -1,0 +1,25 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "comfy-downloader",
+      "changelog-path": "CHANGELOG.md"
+    }
+  },
+  "extra-files": [
+    {
+      "type": "toml",
+      "path": "src-tauri/Cargo.toml",
+      "jsonpath": "$.package.version"
+    },
+    {
+      "type": "json",
+      "path": "src-tauri/tauri.conf.json",
+      "jsonpath": "$.version"
+    }
+  ],
+  "include-v-in-tag": true,
+  "pull-request-title-pattern": "chore${scope}: release${component} ${version}",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true
+}
