@@ -58,7 +58,7 @@ export default function TaskList() {
   const summary = getTaskSummary();
   const visibleTasks = useMemo(
     () => getTasksByFilter(filter),
-    [filter, getTasksByFilter, tasks]
+    [filter, getTasksByFilter]
   );
   const activeTasks = tasks.filter(
     (task) => task.status === "queued" || task.status === "downloading"

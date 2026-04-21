@@ -1,13 +1,13 @@
+use log::{info, warn};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-use log::{info, warn};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -72,7 +72,11 @@ impl Aria2Process {
             }
         }
 
-        info!("Starting aria2c at {}:{}", self.aria2_path.display(), self.port);
+        info!(
+            "Starting aria2c at {}:{}",
+            self.aria2_path.display(),
+            self.port
+        );
 
         let mut command = Command::new(&self.aria2_path);
         command
@@ -139,7 +143,6 @@ impl Aria2Process {
         }
         Ok(())
     }
-
 }
 
 fn spawn_aria2_output_reader<T>(app_handle: AppHandle, reader: T, stream: &'static str)
@@ -196,7 +199,7 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
     let resource_dir = app_handle
         .path()
         .resource_dir()
-        .expect("Failed to get resource dir");
+        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
 
     let exe_name = if cfg!(target_os = "windows") {
         "aria2c.exe"
@@ -231,7 +234,11 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
                 let runtime_path = runtime_dir.join(format!(
                     "aria2c-runtime-{}{}",
                     std::process::id(),
-                    if cfg!(target_os = "windows") { ".exe" } else { "" }
+                    if cfg!(target_os = "windows") {
+                        ".exe"
+                    } else {
+                        ""
+                    }
                 ));
 
                 fs::copy(&path, &runtime_path)
@@ -261,7 +268,11 @@ fn cleanup_stale_runtime_binaries(runtime_dir: &std::path::Path) {
     let current_name = format!(
         "aria2c-runtime-{}{}",
         std::process::id(),
-        if cfg!(target_os = "windows") { ".exe" } else { "" }
+        if cfg!(target_os = "windows") {
+            ".exe"
+        } else {
+            ""
+        }
     );
 
     for entry in entries.flatten() {
@@ -296,5 +307,3 @@ fn cleanup_stale_runtime_binaries(runtime_dir: &std::path::Path) {
         }
     }
 }
-
-use tauri::Manager;

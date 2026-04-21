@@ -75,7 +75,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (["aria2_max_concurrent", "aria2_max_connections", "proxy"].includes(key)) {
         await get().syncAria2Settings();
       }
-      console.log(`[Settings] Updated ${key} =`, value);
     } catch (e) {
       console.error(`[Settings] Failed to update ${key}:`, e);
       throw e;
