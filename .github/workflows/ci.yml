@@ -17,12 +17,12 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Setup Rust
@@ -67,7 +67,7 @@ jobs:
             rust-target: aarch64-apple-darwin
             tauri-args: --target aarch64-apple-darwin
           - label: macos-x64
-            os: macos-13
+            os: macos-15-intel
             rust-target: x86_64-apple-darwin
             tauri-args: --target x86_64-apple-darwin
           - label: windows-x64
@@ -79,12 +79,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Setup Rust
