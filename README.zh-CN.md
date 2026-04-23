@@ -22,10 +22,21 @@ ComfyDownloader 主要解决 ComfyUI 使用过程中最繁琐的那一段：找�
 
 ## 截图
 
-- `docs/screenshots/search.png` - 搜索与来源浏览
-- `docs/screenshots/downloads.png` - 下载队列与进度追踪
-- `docs/screenshots/workflow.png` - Workflow 模型依赖分析
-- `docs/screenshots/settings.png` - 目录映射与 Token 设置
+### 搜索
+
+![搜索与来源浏览](docs/screenshots/search.png)
+
+### 下载
+
+![下载队列与进度追踪](docs/screenshots/downloads.png)
+
+### Workflow
+
+![Workflow 模型依赖分析](docs/screenshots/workflow.png)
+
+### 设置
+
+![目录映射与 Token 设置](docs/screenshots/settings.png)
 
 ## 功能特性
 

@@ -22,10 +22,21 @@ Instead of juggling browser tabs, model pages, and manual folder selection, the 
 
 ## Screenshots
 
-- `docs/screenshots/search.png` - search and source browsing
-- `docs/screenshots/downloads.png` - download queue and progress tracking
-- `docs/screenshots/workflow.png` - workflow model dependency analysis
-- `docs/screenshots/settings.png` - directory mapping and token settings
+### Search
+
+![Search and source browsing](docs/screenshots/search.png)
+
+### Downloads
+
+![Download queue and progress tracking](docs/screenshots/downloads.png)
+
+### Workflow
+
+![Workflow model dependency analysis](docs/screenshots/workflow.png)
+
+### Settings
+
+![Directory mapping and token settings](docs/screenshots/settings.png)
 
 ## Features
 
