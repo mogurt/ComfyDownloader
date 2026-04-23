@@ -152,6 +152,15 @@ cd src-tauri && cargo test
 - 当前 release 产物尚未代码签名，首次运行前请先校验 checksum。
 - 安全相关问题请按 [`SECURITY.md`](SECURITY.md) 中的方式私下反馈，不要直接公开提 issue。
 
+## 许可证
+
+ComfyDownloader 本体采用 [MIT License](LICENSE) 发布。
+
+项目以 sidecar 形式内嵌了 `aria2c` 作为下载引擎。`aria2c` 采用
+[GNU GPL v2.0 或更高版本](https://github.com/aria2/aria2/blob/master/COPYING)
+许可，版权归其上游作者所有。完整的第三方组件清单与许可证信息请见
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
 ## 项目结构
 
 ```text

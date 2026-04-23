@@ -152,6 +152,16 @@ cd src-tauri && cargo test
 - Releases are not code-signed yet. Verify checksums before first launch.
 - For security-sensitive reports, follow [`SECURITY.md`](SECURITY.md) instead of opening a public issue.
 
+## License
+
+ComfyDownloader is released under the [MIT License](LICENSE).
+
+The project bundles `aria2c` as a sidecar download engine. `aria2c` is
+distributed under [GNU GPL v2.0 or later](https://github.com/aria2/aria2/blob/master/COPYING)
+and remains the property of its upstream authors. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full list
+of third-party components and their licenses.
+
 ## Project Structure
 
 ```text
