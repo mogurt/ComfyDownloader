@@ -13,9 +13,10 @@ or runtime-required third-party components.
 ## aria2
 
 ComfyDownloader ships the [`aria2c`](https://github.com/aria2/aria2)
-binary as a Tauri sidecar. The binary is downloaded at install time by
-[`scripts/prepare-aria2.mjs`](scripts/prepare-aria2.mjs) and embedded into
-release artifacts (`.dmg` / `.msi` / `.exe`).
+binary as a Tauri sidecar. The binary is prepared at install time by
+[`scripts/prepare-aria2.mjs`](scripts/prepare-aria2.mjs) from the pinned
+official aria2 release (currently 1.37.0, verified by SHA256) and embedded
+into release artifacts (`.dmg` / `.msi` / `.exe`).
 
 - **Project**: aria2 — <https://aria2.github.io/>
 - **Source code**: <https://github.com/aria2/aria2>
@@ -34,12 +35,14 @@ satisfies this requirement for unmodified builds).
 
 ---
 
-## macOS aria2 builds (`AnInsomniacy/aria2-builder`)
+## How the bundled aria2 is built
 
-On macOS, `prepare-aria2.mjs` downloads pre-built `aria2c` binaries from
-the [`AnInsomniacy/aria2-builder`](https://github.com/AnInsomniacy/aria2-builder)
-release feed. Those binaries are themselves builds of upstream aria2 and
-remain under GPL-2.0-or-later as described above.
+- **Windows**: the official upstream `aria2-<version>-win-64bit-build1.zip`
+  release asset, unmodified.
+- **macOS**: upstream publishes no macOS binaries, so `prepare-aria2.mjs`
+  compiles the official, unmodified source tarball, configured to use only
+  system frameworks (AppleTLS). The corresponding source is the upstream
+  release tarball linked above.
 
 ---
 

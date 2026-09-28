@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 import { access, chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cpus, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -11,6 +11,22 @@ import { execFile, spawn } from "node:child_process";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
 const binariesDir = join(projectRoot, "src-tauri", "binaries");
+
+// Pinned official aria2 release. Checksums were cross-checked against the
+// Homebrew (source tarball) and Scoop (Windows zip) package definitions.
+const ARIA2_VERSION = "1.37.0";
+const ARIA2_RELEASE_URL = `https://github.com/aria2/aria2/releases/download/release-${ARIA2_VERSION}`;
+const ARIA2_SOURCE = {
+  name: `aria2-${ARIA2_VERSION}.tar.xz`,
+  sha256: "60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b",
+};
+const ARIA2_WIN64 = {
+  name: `aria2-${ARIA2_VERSION}-win-64bit-build1.zip`,
+  sha256: "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288",
+};
+
+// Oldest macOS the bundled binary should run on.
+const MACOS_DEPLOYMENT_TARGET = "10.15";
 
 async function exists(path) {
   try {
@@ -59,24 +75,9 @@ async function getTargetTriple() {
   }
 }
 
-async function findOnPath(command) {
-  const locator = process.platform === "win32" ? "where" : "which";
-
-  try {
-    const output = await execFileText(locator, [command]);
-    const [firstMatch] = output
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    return firstMatch ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function runCommand(command, args) {
+function runCommand(command, args, options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, { stdio: "inherit" });
+    const child = spawn(command, args, { stdio: "inherit", ...options });
 
     child.on("exit", (code) => {
       if (code === 0) {
@@ -89,31 +90,6 @@ function runCommand(command, args) {
 
     child.on("error", rejectPromise);
   });
-}
-
-function buildGithubHeaders() {
-  const headers = {
-    "User-Agent": "comfy-downloader-setup",
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  return headers;
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: buildGithubHeaders() });
-
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}) for ${url}`);
-  }
-
-  return response.json();
 }
 
 async function downloadFile(url, destination) {
@@ -135,33 +111,26 @@ async function sha256File(path) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-function runPowerShellExpandArchive(zipPath, destinationDir) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(
-      "powershell",
-      [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        `Expand-Archive -LiteralPath '${zipPath.replaceAll("'", "''")}' -DestinationPath '${destinationDir.replaceAll("'", "''")}' -Force`,
-      ],
-      {
-        stdio: "inherit",
-      },
+async function downloadVerified(asset, destination) {
+  console.log(`[prepare-aria2] Downloading ${asset.name}...`);
+  await downloadFile(`${ARIA2_RELEASE_URL}/${asset.name}`, destination);
+
+  const actual = await sha256File(destination);
+  if (actual !== asset.sha256) {
+    throw new Error(
+      `Checksum mismatch for ${asset.name}: expected ${asset.sha256}, got ${actual}`,
     );
+  }
+}
 
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-
-      rejectPromise(new Error(`Expand-Archive failed with exit code ${code}`));
-    });
-
-    child.on("error", rejectPromise);
-  });
+function runPowerShellExpandArchive(zipPath, destinationDir) {
+  return runCommand("powershell", [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    `Expand-Archive -LiteralPath '${zipPath.replaceAll("'", "''")}' -DestinationPath '${destinationDir.replaceAll("'", "''")}' -Force`,
+  ]);
 }
 
 async function findFileRecursive(rootDir, fileName) {
@@ -183,89 +152,104 @@ async function findFileRecursive(rootDir, fileName) {
   return null;
 }
 
-async function getLatestAria2Version() {
-  const release = await fetchJson("https://api.github.com/repos/aria2/aria2/releases/latest");
-  const tagName = release.tag_name ?? "";
-  const version = tagName.replace(/^release-/, "");
-
-  if (!version) {
-    throw new Error(`Unexpected aria2 release tag: ${tagName}`);
-  }
-
-  return version;
-}
-
-async function getLatestAria2BuilderRelease() {
-  return fetchJson("https://api.github.com/repos/AnInsomniacy/aria2-builder/releases/latest");
-}
-
-function getMacAssetSuffix() {
-  if (process.arch === "arm64") {
-    return "macos-arm64.tar.bz2";
-  }
-
-  if (process.arch === "x64") {
-    return "macos-x86_64.tar.bz2";
-  }
-
-  return null;
-}
-
-async function prepareMacBinary(targetBinary) {
-  const assetSuffix = getMacAssetSuffix();
-  if (!assetSuffix) {
-    throw new Error(`Unsupported macOS architecture: ${process.arch}`);
-  }
-
-  const release = await getLatestAria2BuilderRelease();
-  const asset = release.assets?.find((entry) => entry.name?.endsWith(assetSuffix));
-  if (!asset?.browser_download_url) {
-    throw new Error(`No macOS aria2 asset found for ${assetSuffix}`);
-  }
-
-  const tempDir = await mkdtemp(join(tmpdir(), "comfy-aria2-macos-"));
-  const archivePath = join(tempDir, asset.name);
-  const extractDir = join(tempDir, "extract");
-
-  console.log(`[prepare-aria2] Downloading ${asset.name}...`);
-
+async function withTempDir(prefix, fn) {
+  const tempDir = await mkdtemp(join(tmpdir(), prefix));
   try {
-    await mkdir(extractDir, { recursive: true });
-    await downloadFile(asset.browser_download_url, archivePath);
-
-    if (typeof asset.digest === "string" && asset.digest.startsWith("sha256:")) {
-      const expected = asset.digest.slice("sha256:".length);
-      const actual = await sha256File(archivePath);
-      if (actual !== expected) {
-        throw new Error(`Checksum mismatch for ${asset.name}`);
-      }
-    }
-
-    await runCommand("tar", ["-xjf", archivePath, "-C", extractDir]);
-
-    const extractedBinary = await findFileRecursive(extractDir, "aria2c");
-    if (!extractedBinary) {
-      throw new Error("aria2c was not found in the downloaded archive");
-    }
-
-    await copyFile(extractedBinary, targetBinary);
-    await chmod(targetBinary, 0o755);
-    console.log(`[prepare-aria2] Saved ${targetBinary}`);
-  } catch (error) {
-    const installedAria2 = await findOnPath("aria2c");
-    if (installedAria2) {
-      await copyFile(installedAria2, targetBinary);
-      await chmod(targetBinary, 0o755);
-      console.warn(
-        `[prepare-aria2] Download failed, fell back to local aria2c: ${installedAria2}`,
-      );
-      return;
-    }
-
-    throw error;
+    return await fn(tempDir);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function prepareWindowsBinary(targetBinary) {
+  await withTempDir("comfy-aria2-", async (tempDir) => {
+    const zipPath = join(tempDir, ARIA2_WIN64.name);
+    const extractDir = join(tempDir, "extract");
+    await mkdir(extractDir, { recursive: true });
+
+    await downloadVerified(ARIA2_WIN64, zipPath);
+    await runPowerShellExpandArchive(zipPath, extractDir);
+
+    const extractedBinary = await findFileRecursive(extractDir, "aria2c.exe");
+    if (!extractedBinary) {
+      throw new Error("aria2c.exe was not found in the downloaded archive");
+    }
+
+    await copyFile(extractedBinary, targetBinary);
+  });
+}
+
+// Libraries that exist on every macOS install; anything else (e.g. Homebrew)
+// would not be present on users' machines.
+function isSystemLibrary(path) {
+  return path.startsWith("/usr/lib/") || path.startsWith("/System/Library/");
+}
+
+async function assertOnlySystemLibraries(binary) {
+  const output = await execFileText("otool", ["-L", binary]);
+  const libraries = output
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim().split(" ")[0])
+    .filter(Boolean);
+  const foreign = libraries.filter((lib) => !isSystemLibrary(lib));
+  if (foreign.length > 0) {
+    throw new Error(`aria2c links non-system libraries: ${foreign.join(", ")}`);
+  }
+}
+
+/**
+ * aria2 publishes no macOS binaries, so build the pinned release from source,
+ * linking only against system frameworks (AppleTLS) to keep it portable.
+ */
+async function prepareMacBinary(targetBinary) {
+  await withTempDir("comfy-aria2-macos-", async (tempDir) => {
+    const tarball = join(tempDir, ARIA2_SOURCE.name);
+    await downloadVerified(ARIA2_SOURCE, tarball);
+    await runCommand("tar", ["-xJf", tarball, "-C", tempDir]);
+
+    const sourceDir = join(tempDir, `aria2-${ARIA2_VERSION}`);
+    // An empty pkg-config search path keeps Homebrew libraries out of the build.
+    const emptyPkgConfigDir = join(tempDir, "pkgconfig");
+    await mkdir(emptyPkgConfigDir);
+    const env = {
+      ...process.env,
+      MACOSX_DEPLOYMENT_TARGET: MACOS_DEPLOYMENT_TARGET,
+      PKG_CONFIG_PATH: "",
+      PKG_CONFIG_LIBDIR: emptyPkgConfigDir,
+    };
+
+    console.log(`[prepare-aria2] Building aria2 ${ARIA2_VERSION} from source...`);
+    await runCommand(
+      "./configure",
+      [
+        "--disable-dependency-tracking",
+        "--disable-nls",
+        "--with-appletls",
+        "--without-openssl",
+        "--without-gnutls",
+        "--without-libnettle",
+        "--without-libgmp",
+        "--without-libgcrypt",
+        "--without-libssh2",
+        "--without-libcares",
+        "--without-sqlite3",
+        "--without-libxml2",
+        "--without-libexpat",
+        "--without-libz",
+        "ARIA2_STATIC=no",
+      ],
+      { cwd: sourceDir, env },
+    );
+    await runCommand("make", [`-j${cpus().length}`], { cwd: sourceDir, env });
+
+    const builtBinary = join(sourceDir, "src", "aria2c");
+    await runCommand("strip", [builtBinary]);
+    await assertOnlySystemLibraries(builtBinary);
+
+    await copyFile(builtBinary, targetBinary);
+    await chmod(targetBinary, 0o755);
+  });
 }
 
 async function main() {
@@ -287,41 +271,28 @@ async function main() {
 
   await mkdir(binariesDir, { recursive: true });
 
-  if (process.platform === "darwin") {
-    await prepareMacBinary(targetBinary);
+  // Escape hatch: use a locally provided aria2c instead of fetching/building one.
+  const override = process.env.ARIA2C_PATH;
+  if (override) {
+    await copyFile(override, targetBinary);
+    await chmod(targetBinary, 0o755);
+    console.log(`[prepare-aria2] Copied ${override} to ${targetBinary}`);
     return;
   }
 
-  if (process.platform !== "win32" || process.arch !== "x64") {
+  if (process.platform === "darwin") {
+    await prepareMacBinary(targetBinary);
+  } else if (process.platform === "win32" && process.arch === "x64") {
+    await prepareWindowsBinary(targetBinary);
+  } else {
     console.log(
-      `[prepare-aria2] Automatic aria2 setup is not available for ${targetTriple}.`,
+      `[prepare-aria2] Automatic aria2 setup is not available for ${targetTriple}. ` +
+        "Set ARIA2C_PATH to an aria2c binary to bundle it.",
     );
     return;
   }
 
-  const version = await getLatestAria2Version();
-  const zipUrl = `https://sourceforge.net/projects/aria2.mirror/files/release-${version}/aria2-${version}-win-64bit-build1.zip/download`;
-  const tempDir = await mkdtemp(join(tmpdir(), "comfy-aria2-"));
-  const zipPath = join(tempDir, `aria2-${version}.zip`);
-  const extractDir = join(tempDir, "extract");
-
-  console.log(`[prepare-aria2] Downloading aria2 ${version}...`);
-
-  try {
-    await mkdir(extractDir, { recursive: true });
-    await downloadFile(zipUrl, zipPath);
-    await runPowerShellExpandArchive(zipPath, extractDir);
-
-    const extractedBinary = await findFileRecursive(extractDir, "aria2c.exe");
-    if (!extractedBinary) {
-      throw new Error("aria2c.exe was not found in the downloaded archive");
-    }
-
-    await copyFile(extractedBinary, targetBinary);
-    console.log(`[prepare-aria2] Saved ${targetBinary}`);
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
+  console.log(`[prepare-aria2] Saved ${targetBinary}`);
 }
 
 main().catch((error) => {

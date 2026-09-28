@@ -36,6 +36,12 @@ jobs:
           workspaces: src-tauri -> target
           key: quality
 
+      - name: Cache aria2 sidecar
+        uses: actions/cache@v6
+        with:
+          path: src-tauri/binaries
+          key: aria2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-aria2.mjs') }}
+
       - name: Install npm dependencies
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,6 +103,12 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: ${{ matrix.label }}
+
+      - name: Cache aria2 sidecar
+        uses: actions/cache@v6
+        with:
+          path: src-tauri/binaries
+          key: aria2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-aria2.mjs') }}
 
       - name: Install npm dependencies
         env:
