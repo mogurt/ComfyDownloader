@@ -39,6 +39,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useTaskStore } from "@/stores/taskStore";
 import * as api from "@/lib/api";
 import { getModelBaseDir, joinPath } from "@/lib/utils";
+import { resolveDuplicate } from "@/lib/duplicates";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -830,6 +831,7 @@ function DownloadConfirmDialog({
   const [selectedSubSubdir, setSelectedSubSubdir] = useState("");
   const [manualDir, setManualDir] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [filename, setFilename] = useState("");
 
   const settings = useSettingsStore((s) => s.settings);
   const addTask = useTaskStore((s) => s.addTask);
@@ -840,6 +842,7 @@ function DownloadConfirmDialog({
 
   useEffect(() => {
     if (!pending) return;
+    setFilename(pending.file.filename);
     const initial = !baseDir ? "__manual__" : pending.matchedSubdir || "";
     setSelectedSubdir(initial);
     setSelectedSubSubdir("");
@@ -896,18 +899,26 @@ function DownloadConfirmDialog({
 
     setDownloading(true);
     try {
-      const exists = await api.checkFileExists(resolvedDir, pending.file.filename);
-      if (exists && settings.duplicate_strategy === "skip") {
-        addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename: pending.file.filename }));
+      const requestedName = filename.trim();
+      const resolution = await resolveDuplicate(resolvedDir, requestedName, settings.duplicate_strategy);
+      if (resolution.action === "skip") {
+        addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename: requestedName }));
         setDownloading(false);
         onClose();
         return;
+      }
+      const finalName = resolution.filename;
+      if (resolution.renamedFrom) {
+        addLog("info", translate("taskInput.log.renamedDuplicate", {
+          filename: resolution.renamedFrom,
+          newName: finalName,
+        }));
       }
 
       const taskId = await addTask({
         gid: "",
         url: pending.file.download_url,
-        filename: pending.file.filename,
+        filename: finalName,
         source: pending.modelSource,
         model_type: isManual ? "custom" : selectedSubdir || pending.suggestedType,
         target_dir: resolvedDir,
@@ -926,7 +937,7 @@ function DownloadConfirmDialog({
       }
 
       addLog("info", translate("search.downloadStarted", {
-        filename: pending.file.filename,
+        filename: finalName,
         model: pending.modelId,
       }));
       onClose();
@@ -1049,6 +1060,16 @@ function DownloadConfirmDialog({
               </div>
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{t("taskInput.filename")}</label>
+            <Input
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              spellCheck={false}
+              className="h-8 text-xs"
+            />
+          </div>
 
           {/* Subdirectory selection */}
           <div className="space-y-1.5">

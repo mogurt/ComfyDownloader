@@ -20,6 +20,7 @@ import { useTaskStore } from "@/stores/taskStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import * as api from "@/lib/api";
 import { getModelBaseDir, joinPath } from "@/lib/utils";
+import { resolveDuplicate } from "@/lib/duplicates";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useI18n, translate } from "@/lib/i18n";
@@ -213,19 +214,20 @@ export default function TaskInput() {
       return;
     }
 
-    let exists: boolean;
+    const requestedName = filename.trim();
+    let resolution;
     try {
-      exists = await api.checkFileExists(resolvedTargetDir, filename);
+      resolution = await resolveDuplicate(resolvedTargetDir, requestedName, settings.duplicate_strategy);
     } catch (e) {
       addLog("error", String(e));
       return;
     }
-    if (exists && settings.duplicate_strategy === "skip") {
-      addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename }));
+    if (resolution.action === "skip") {
+      addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename: requestedName }));
       await addTask({
         gid: "",
         url: url.trim(),
-        filename,
+        filename: requestedName,
         source: recommendation.split(" -> ")[0] || "unknown",
         model_type: isManual ? "custom" : selectedSubdir,
         target_dir: resolvedTargetDir,
@@ -239,11 +241,18 @@ export default function TaskInput() {
       resetForm();
       return;
     }
+    const finalName = resolution.filename;
+    if (resolution.renamedFrom) {
+      addLog("info", translate("taskInput.log.renamedDuplicate", {
+        filename: resolution.renamedFrom,
+        newName: finalName,
+      }));
+    }
 
     const taskId = await addTask({
       gid: "",
       url: url.trim(),
-      filename,
+      filename: finalName,
       source: recommendation.split(" -> ")[0] || "unknown",
       model_type: isManual ? "custom" : selectedSubdir,
       target_dir: resolvedTargetDir,
@@ -366,6 +375,18 @@ export default function TaskInput() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="font-medium">{t("taskInput.recommended")}</span>
           <span>{recommendation}</span>
+        </div>
+      )}
+      {looksLikeUrl(url) && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="shrink-0 font-medium text-muted-foreground">{t("taskInput.filename")}</span>
+          <Input
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+            disabled={parsing}
+            spellCheck={false}
+            className="h-8 max-w-xl"
+          />
         </div>
       )}
       <TooltipProvider>

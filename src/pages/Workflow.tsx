@@ -11,6 +11,7 @@ import type {
   WorkflowAnalysis,
 } from "@/lib/types";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -192,52 +193,51 @@ export default function Workflow({
     [processParseResult]
   );
 
-  const handleFileDrop = useCallback(
-    async (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragOver(false);
-
-      const files = e.dataTransfer?.files;
-      if (!files || files.length === 0) return;
-
-      const file = files[0];
-      if (!file.name.endsWith(".json")) {
-        setError("Only .json files are supported");
-        return;
-      }
-
-      const text = await file.text();
-      setSelectedFilePath(null);
-      analyzeWorkflowJson(text, file.name);
-    },
-    [analyzeWorkflowJson]
-  );
-
-  const handleDragOver = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-  }, []);
-
+  // Tauri intercepts OS file drops (HTML5 `drop` never fires), so listen to the
+  // webview's drag-drop events, which also give us the real file path.
   useEffect(() => {
-    const el = dropRef.current;
-    if (!el) return;
-    el.addEventListener("drop", handleFileDrop);
-    el.addEventListener("dragover", handleDragOver);
-    el.addEventListener("dragleave", handleDragLeave);
-    return () => {
-      el.removeEventListener("drop", handleFileDrop);
-      el.removeEventListener("dragover", handleDragOver);
-      el.removeEventListener("dragleave", handleDragLeave);
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+
+    const isOverDropZone = (position: { x: number; y: number }) => {
+      const el = dropRef.current;
+      // offsetParent is null while this page is hidden behind another tab.
+      if (!el || el.offsetParent === null) return false;
+      const rect = el.getBoundingClientRect();
+      const x = position.x / window.devicePixelRatio;
+      const y = position.y / window.devicePixelRatio;
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
     };
-  }, [handleFileDrop, handleDragOver, handleDragLeave]);
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          setDragOver(isOverDropZone(payload.position));
+        } else if (payload.type === "leave") {
+          setDragOver(false);
+        } else if (payload.type === "drop") {
+          setDragOver(false);
+          if (!isOverDropZone(payload.position)) return;
+          const path = payload.paths[0];
+          if (!path) return;
+          if (!path.toLowerCase().endsWith(".json")) {
+            setError(t("workflow.onlyJson"));
+            return;
+          }
+          analyzeWorkflowFile(path, path.split(/[\\/]/).pop() || "workflow.json");
+        }
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [analyzeWorkflowFile, t]);
 
   const handleSelectFile = async () => {
     try {

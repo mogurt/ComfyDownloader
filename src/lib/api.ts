@@ -74,6 +74,10 @@ export async function checkFileExists(
   return invoke("check_file_exists", { dir, filename });
 }
 
+export async function uniqueFilename(dir: string, filename: string): Promise<string> {
+  return invoke("unique_filename", { dir, filename });
+}
+
 export async function createDownload(
   url: string,
   dir: string,
@@ -111,12 +115,14 @@ export async function getActiveDownloads(): Promise<Aria2Status[]> {
 export async function applyAria2RuntimeSettings(
   maxConcurrent: number,
   maxConnections: number,
-  proxy?: string
+  proxy?: string,
+  speedLimitKb?: number
 ): Promise<void> {
   return invoke("apply_aria2_runtime_settings", {
     maxConcurrent,
     maxConnections,
     proxy: proxy ?? "",
+    speedLimitKb: speedLimitKb ?? 0,
   });
 }
 

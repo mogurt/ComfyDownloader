@@ -64,6 +64,32 @@ pub async fn check_file_exists(dir: String, filename: String) -> Result<bool, St
     Ok(path.exists())
 }
 
+/// Returns `filename` if it is free in `dir`, otherwise the first free
+/// `stem (n).ext` variant (used by the "rename" duplicate strategy).
+#[tauri::command]
+pub async fn unique_filename(dir: String, filename: String) -> Result<String, String> {
+    validate_filename(&filename)?;
+    next_free_filename(Path::new(&dir), &filename)
+}
+
+fn next_free_filename(dir: &Path, filename: &str) -> Result<String, String> {
+    // A leftover `.aria2` control file means aria2 would resume into that name.
+    let is_free =
+        |name: &str| !dir.join(name).exists() && !dir.join(format!("{}.aria2", name)).exists();
+    if is_free(filename) {
+        return Ok(filename.to_string());
+    }
+
+    let (stem, ext) = match filename.rfind('.') {
+        Some(i) if i > 0 => (&filename[..i], &filename[i..]),
+        _ => (filename, ""),
+    };
+    (1..1000)
+        .map(|n| format!("{} ({}){}", stem, n, ext))
+        .find(|candidate| is_free(candidate))
+        .ok_or_else(|| format!("No free file name for {}", filename))
+}
+
 #[tauri::command]
 pub async fn create_download(
     rpc_state: State<'_, Aria2RpcState>,
@@ -144,13 +170,51 @@ pub async fn apply_aria2_runtime_settings(
     max_concurrent: u32,
     max_connections: u32,
     proxy: Option<String>,
+    speed_limit_kb: Option<u64>,
 ) -> Result<(), String> {
     let rpc = get_rpc(&rpc_state).await?;
     let options = serde_json::json!({
         "max-concurrent-downloads": max_concurrent.to_string(),
         "max-connection-per-server": max_connections.to_string(),
         "all-proxy": proxy.unwrap_or_default(),
+        // 0 means unlimited for aria2 as well.
+        "max-overall-download-limit": format!("{}K", speed_limit_kb.unwrap_or(0)),
     });
 
     rpc.change_global_option(options).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_free_filename;
+    use std::fs;
+
+    #[test]
+    fn picks_next_free_numbered_name() {
+        let dir = std::env::temp_dir().join(format!("cd-unique-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+
+        assert_eq!(
+            next_free_filename(&dir, "model.safetensors").unwrap(),
+            "model.safetensors"
+        );
+
+        fs::write(dir.join("model.safetensors"), b"x").unwrap();
+        assert_eq!(
+            next_free_filename(&dir, "model.safetensors").unwrap(),
+            "model (1).safetensors"
+        );
+
+        // A partial download (control file) also occupies the name.
+        fs::write(dir.join("model (1).safetensors.aria2"), b"x").unwrap();
+        assert_eq!(
+            next_free_filename(&dir, "model.safetensors").unwrap(),
+            "model (2).safetensors"
+        );
+
+        fs::write(dir.join("README"), b"x").unwrap();
+        assert_eq!(next_free_filename(&dir, "README").unwrap(), "README (1)");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

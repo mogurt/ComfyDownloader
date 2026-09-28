@@ -16,7 +16,7 @@ async function getDb(): Promise<Database> {
 // every keystroke, while DB writes and aria2 syncs are debounced.
 const WRITE_DEBOUNCE_MS = 300;
 const ARIA2_SYNC_DEBOUNCE_MS = 800;
-const ARIA2_KEYS = ["aria2_max_concurrent", "aria2_max_connections", "proxy"];
+const ARIA2_KEYS = ["aria2_max_concurrent", "aria2_max_connections", "proxy", "download_speed_limit"];
 
 const pendingWrites = new Map<
   string,
@@ -117,12 +117,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     if (!Number.isFinite(maxConcurrent) || maxConcurrent < 1) return;
     if (!Number.isFinite(maxConnections) || maxConnections < 1) return;
+    const speedLimit = Number.parseInt(settings.download_speed_limit, 10);
 
     try {
       await api.applyAria2RuntimeSettings(
         maxConcurrent,
         maxConnections,
-        settings.proxy.trim()
+        settings.proxy.trim(),
+        Number.isFinite(speedLimit) && speedLimit > 0 ? speedLimit : 0
       );
     } catch (e) {
       console.warn("[Settings] Failed to sync aria2 runtime settings:", e);
