@@ -67,6 +67,12 @@ function getFallbackTargetTriple() {
 }
 
 async function getTargetTriple() {
+  // Set when building for another target than the host (e.g. x86_64 macOS
+  // bundles built on an Apple Silicon CI runner).
+  if (process.env.ARIA2_TARGET_TRIPLE) {
+    return process.env.ARIA2_TARGET_TRIPLE;
+  }
+
   try {
     const triple = await execFileText("rustc", ["--print", "host-tuple"]);
     return triple || getFallbackTargetTriple();
@@ -185,6 +191,13 @@ function isSystemLibrary(path) {
   return path.startsWith("/usr/lib/") || path.startsWith("/System/Library/");
 }
 
+async function assertArchitecture(binary, arch) {
+  const archs = await execFileText("lipo", ["-archs", binary]);
+  if (archs !== arch) {
+    throw new Error(`aria2c was built for "${archs}", expected "${arch}"`);
+  }
+}
+
 async function assertOnlySystemLibraries(binary) {
   const output = await execFileText("otool", ["-L", binary]);
   const libraries = output
@@ -202,7 +215,9 @@ async function assertOnlySystemLibraries(binary) {
  * aria2 publishes no macOS binaries, so build the pinned release from source,
  * linking only against system frameworks (AppleTLS) to keep it portable.
  */
-async function prepareMacBinary(targetBinary) {
+async function prepareMacBinary(targetBinary, targetTriple) {
+  const arch = targetTriple.startsWith("x86_64") ? "x86_64" : "arm64";
+
   await withTempDir("comfy-aria2-macos-", async (tempDir) => {
     const tarball = join(tempDir, ARIA2_SOURCE.name);
     await downloadVerified(ARIA2_SOURCE, tarball);
@@ -215,6 +230,10 @@ async function prepareMacBinary(targetBinary) {
     const env = {
       ...process.env,
       MACOSX_DEPLOYMENT_TARGET: MACOS_DEPLOYMENT_TARGET,
+      // Build for the target arch. When it differs from the host, configure's
+      // test programs run under Rosetta, so no cross-compile setup is needed.
+      CC: `clang -arch ${arch}`,
+      CXX: `clang++ -arch ${arch}`,
       PKG_CONFIG_PATH: "",
       PKG_CONFIG_LIBDIR: emptyPkgConfigDir,
     };
@@ -245,6 +264,7 @@ async function prepareMacBinary(targetBinary) {
 
     const builtBinary = join(sourceDir, "src", "aria2c");
     await runCommand("strip", [builtBinary]);
+    await assertArchitecture(builtBinary, arch);
     await assertOnlySystemLibraries(builtBinary);
 
     await copyFile(builtBinary, targetBinary);
@@ -281,7 +301,7 @@ async function main() {
   }
 
   if (process.platform === "darwin") {
-    await prepareMacBinary(targetBinary);
+    await prepareMacBinary(targetBinary, targetTriple);
   } else if (process.platform === "win32" && process.arch === "x64") {
     await prepareWindowsBinary(targetBinary);
   } else {
