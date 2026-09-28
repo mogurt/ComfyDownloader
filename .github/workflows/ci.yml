@@ -120,15 +120,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # PRs only need the .app bundle: the DMG step (hdiutil/Finder) is
+          # flaky on hosted runners and is still produced by release builds.
           - label: macos-arm64
             os: macos-14
             rust-target: aarch64-apple-darwin
-            tauri-args: --target aarch64-apple-darwin
+            tauri-args: --target aarch64-apple-darwin --bundles app
           # Cross-compiled on Apple Silicon: far faster than the Intel runners.
           - label: macos-x64
             os: macos-14
             rust-target: x86_64-apple-darwin
-            tauri-args: --target x86_64-apple-darwin
+            tauri-args: --target x86_64-apple-darwin --bundles app
           - label: windows-x64
             os: windows-latest
             rust-target: x86_64-pc-windows-msvc

@@ -390,7 +390,11 @@ export default function TaskList() {
             }
             case "openDirectory":
               if (singleTask?.target_dir) {
-                await api.openDirectory(singleTask.target_dir);
+                try {
+                  await api.openDirectory(singleTask.target_dir);
+                } catch (e) {
+                  useTaskStore.getState().addLog("error", String(e));
+                }
               }
               break;
             case "viewDetails":

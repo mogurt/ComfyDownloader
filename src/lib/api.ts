@@ -208,7 +208,7 @@ export async function searchCivitaiModels(
     sort: params.sort || null,
     period: params.period || null,
     limit: params.limit ?? 20,
-    page: params.page ?? 1,
+    cursor: params.cursor ?? null,
     proxy: proxy || null,
     civitaiToken: civitaiToken || null,
   });

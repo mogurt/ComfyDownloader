@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   HfFileEntry,
+  HfModelInfo,
   HfSearchParams,
   SearchResultItem,
   CivitaiSearchParams,
@@ -26,7 +27,7 @@ interface SearchState {
   hfHasMore: boolean;
   hfOffset: number;
   civitaiHasMore: boolean;
-  civitaiPage: number;
+  civitaiCursor: string | null;
 
   expandedModelId: string | null;
   modelFiles: Record<string, HfFileEntry[]>;
@@ -97,6 +98,45 @@ function mapFilterToCivitaiType(filter: string): string | undefined {
   return map[filter];
 }
 
+function mapHfToUnified(m: HfModelInfo): SearchResultItem {
+  return {
+    source: "huggingface",
+    id: m.model_id,
+    name: m.model_id,
+    author: m.author,
+    downloads: m.downloads,
+    likes: m.likes,
+    tags: m.tags,
+    model_type: m.pipeline_tag,
+    last_modified: m.last_modified,
+    thumbnail_url: null,
+    hf: m,
+  };
+}
+
+/**
+ * Merges the per-source result lists (each already ordered by its API).
+ * Downloads and likes are comparable across sources; Civitai results carry no
+ * modification date, so for "newest" the two lists are interleaved instead.
+ */
+function mergeResults(hf: SearchResultItem[], civitai: SearchResultItem[], sort: SortOption): SearchResultItem[] {
+  if (sort === "downloads") return [...hf, ...civitai].sort((a, b) => b.downloads - a.downloads);
+  if (sort === "likes") return [...hf, ...civitai].sort((a, b) => b.likes - a.likes);
+  const merged: SearchResultItem[] = [];
+  for (let i = 0; i < Math.max(hf.length, civitai.length); i++) {
+    if (i < hf.length) merged.push(hf[i]);
+    if (i < civitai.length) merged.push(civitai[i]);
+  }
+  return merged;
+}
+
+function describeFailures(failures: string[]): string | null {
+  return failures.length > 0 ? failures.join("; ") : null;
+}
+
+// Incremented by every new search; responses from older searches are dropped.
+let searchSeq = 0;
+
 export const useSearchStore = create<SearchState>((set, get) => ({
   query: "",
   sort: "downloads",
@@ -110,7 +150,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   hfHasMore: false,
   hfOffset: 0,
   civitaiHasMore: false,
-  civitaiPage: 1,
+  civitaiCursor: null,
 
   expandedModelId: null,
   modelFiles: {},
@@ -125,12 +165,13 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   search: async () => {
     const { query, sort, filter, sourceFilter } = get();
     if (!query.trim()) return;
+    const seq = ++searchSeq;
 
     set({
       loading: true,
       error: null,
       hfOffset: 0,
-      civitaiPage: 1,
+      civitaiCursor: null,
       expandedModelId: null,
       selectedVersions: {},
     });
@@ -140,75 +181,54 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     const queryHf = sourceFilter === "all" || sourceFilter === "huggingface";
     const queryCivitai = sourceFilter === "all" || sourceFilter === "civitai";
 
-    const promises: [
-      Promise<{ status: "fulfilled"; value: Awaited<ReturnType<typeof api.searchHfModels>> } | { status: "rejected"; reason: unknown }>,
-      Promise<{ status: "fulfilled"; value: Awaited<ReturnType<typeof api.searchCivitaiModels>> } | { status: "rejected"; reason: unknown }>,
-    ] = [
+    const [hfResult, civitaiResult] = await Promise.allSettled([
       queryHf
         ? api.searchHfModels(
             { query: trimmed, sort, direction: "-1", limit: PAGE_SIZE, offset: 0, filter: filter || undefined },
             settings.proxy || undefined,
             settings.huggingface_token || undefined
-          ).then((v) => ({ status: "fulfilled" as const, value: v }), (reason) => ({ status: "rejected" as const, reason }))
-        : Promise.resolve({ status: "rejected" as const, reason: "skipped" }),
+          )
+        : Promise.resolve(null),
       queryCivitai
         ? api.searchCivitaiModels(
-            { query: trimmed, sort: mapCivitaiSortOption(sort), period: "AllTime", limit: PAGE_SIZE, page: 1, types: mapFilterToCivitaiType(filter) },
+            { query: trimmed, sort: mapCivitaiSortOption(sort), period: "AllTime", limit: PAGE_SIZE, types: mapFilterToCivitaiType(filter) },
             settings.proxy || undefined,
             settings.civitai_api_token || undefined
-          ).then((v) => ({ status: "fulfilled" as const, value: v }), (reason) => ({ status: "rejected" as const, reason }))
-        : Promise.resolve({ status: "rejected" as const, reason: "skipped" }),
-    ];
+          )
+        : Promise.resolve(null),
+    ]);
+    if (seq !== searchSeq) return;
 
-    const [hfResult, civitaiResult] = await Promise.all(promises);
-
-    const unified: SearchResultItem[] = [];
+    const failures: string[] = [];
+    let hfItems: SearchResultItem[] = [];
+    let civitaiItems: SearchResultItem[] = [];
     let hfHasMore = false;
-    let hfOffset = 0;
     let civitaiHasMore = false;
+    let civitaiCursor: string | null = null;
 
-    if (hfResult.status === "fulfilled") {
-      const hf = hfResult.value;
-      for (const m of hf.models) {
-        unified.push({
-          source: "huggingface",
-          id: m.model_id,
-          name: m.model_id,
-          author: m.author,
-          downloads: m.downloads,
-          likes: m.likes,
-          tags: m.tags,
-          model_type: m.pipeline_tag,
-          last_modified: m.last_modified,
-          thumbnail_url: null,
-          hf: m,
-        });
-      }
-      hfHasMore = hf.has_more;
-      hfOffset = hf.models.length;
-    } else if (hfResult.reason !== "skipped") {
-      console.warn("HF search failed:", hfResult.reason);
+    if (hfResult.status === "fulfilled" && hfResult.value) {
+      hfItems = hfResult.value.models.map(mapHfToUnified);
+      hfHasMore = hfResult.value.has_more;
+    } else if (hfResult.status === "rejected") {
+      failures.push(`HuggingFace: ${String(hfResult.reason)}`);
     }
 
-    if (civitaiResult.status === "fulfilled") {
-      const civ = civitaiResult.value;
-      for (const m of civ.models) {
-        unified.push(mapCivitaiToUnified(m));
-      }
-      civitaiHasMore = civ.has_more;
-    } else if (civitaiResult.reason !== "skipped") {
-      console.warn("Civitai search failed:", civitaiResult.reason);
+    if (civitaiResult.status === "fulfilled" && civitaiResult.value) {
+      civitaiItems = civitaiResult.value.models.map(mapCivitaiToUnified);
+      civitaiHasMore = civitaiResult.value.has_more;
+      civitaiCursor = civitaiResult.value.next_cursor;
+    } else if (civitaiResult.status === "rejected") {
+      failures.push(`Civitai: ${String(civitaiResult.reason)}`);
     }
-
-    unified.sort((a, b) => b.downloads - a.downloads);
 
     set({
-      results: unified,
+      results: mergeResults(hfItems, civitaiItems, sort),
       hfHasMore,
-      hfOffset,
+      hfOffset: hfItems.length,
       civitaiHasMore,
-      civitaiPage: 2,
+      civitaiCursor,
       loading: false,
+      error: describeFailures(failures),
     });
   },
 
@@ -221,107 +241,74 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       hfOffset,
       hfHasMore,
       civitaiHasMore,
-      civitaiPage,
+      civitaiCursor,
       loadingMore,
     } = get();
     const canLoadHf = hfHasMore && (sourceFilter === "all" || sourceFilter === "huggingface");
-    const canLoadCivitai = civitaiHasMore && (sourceFilter === "all" || sourceFilter === "civitai");
+    const canLoadCivitai =
+      civitaiHasMore && !!civitaiCursor && (sourceFilter === "all" || sourceFilter === "civitai");
     if ((!canLoadHf && !canLoadCivitai) || loadingMore) return;
 
+    const seq = searchSeq;
     set({ loadingMore: true });
 
     const settings = useSettingsStore.getState().settings;
     const trimmed = query.trim();
-    const promises: Promise<SearchResultItem[]>[] = [];
 
-    if (canLoadHf) {
-      const hfParams: HfSearchParams = {
-        query: trimmed,
-        sort,
-        direction: "-1",
-        limit: PAGE_SIZE,
-        offset: hfOffset,
-        filter: filter || undefined,
-      };
-      promises.push(
-        api
-          .searchHfModels(
-            hfParams,
+    const [hfResult, civitaiResult] = await Promise.allSettled([
+      canLoadHf
+        ? api.searchHfModels(
+            { query: trimmed, sort, direction: "-1", limit: PAGE_SIZE, offset: hfOffset, filter: filter || undefined } satisfies HfSearchParams,
             settings.proxy || undefined,
             settings.huggingface_token || undefined
           )
-          .then((resp) => {
-            set({
-              hfHasMore: resp.has_more,
-              hfOffset: hfOffset + resp.models.length,
-            });
-            return resp.models.map(
-              (m): SearchResultItem => ({
-                source: "huggingface",
-                id: m.model_id,
-                name: m.model_id,
-                author: m.author,
-                downloads: m.downloads,
-                likes: m.likes,
-                tags: m.tags,
-                model_type: m.pipeline_tag,
-                last_modified: m.last_modified,
-                thumbnail_url: null,
-                hf: m,
-              })
-            );
-          })
-          .catch((e) => {
-            console.warn("HF loadMore failed:", e);
-            set({ hfHasMore: false });
-            return [];
-          })
-      );
-    }
-
-    if (canLoadCivitai) {
-      const civitaiParams: CivitaiSearchParams = {
-        query: trimmed,
-        sort: mapCivitaiSortOption(sort),
-        period: "AllTime",
-        limit: PAGE_SIZE,
-        page: civitaiPage,
-        types: mapFilterToCivitaiType(filter),
-      };
-      promises.push(
-        api
-          .searchCivitaiModels(
-            civitaiParams,
+        : Promise.resolve(null),
+      canLoadCivitai
+        ? api.searchCivitaiModels(
+            {
+              query: trimmed,
+              sort: mapCivitaiSortOption(sort),
+              period: "AllTime",
+              limit: PAGE_SIZE,
+              cursor: civitaiCursor ?? undefined,
+              types: mapFilterToCivitaiType(filter),
+            } satisfies CivitaiSearchParams,
             settings.proxy || undefined,
             settings.civitai_api_token || undefined
           )
-          .then((resp) => {
-            set({
-              civitaiHasMore: resp.has_more,
-              civitaiPage: civitaiPage + 1,
-            });
-            return resp.models.map(mapCivitaiToUnified);
-          })
-          .catch((e) => {
-            console.warn("Civitai loadMore failed:", e);
-            set({ civitaiHasMore: false });
-            return [];
-          })
-      );
+        : Promise.resolve(null),
+    ]);
+    // A new search started meanwhile: these pages belong to the old query.
+    if (seq !== searchSeq) return;
+
+    const failures: string[] = [];
+    const updates: Partial<SearchState> = { loadingMore: false };
+    let hfItems: SearchResultItem[] = [];
+    let civitaiItems: SearchResultItem[] = [];
+
+    if (hfResult.status === "fulfilled" && hfResult.value) {
+      hfItems = hfResult.value.models.map(mapHfToUnified);
+      updates.hfHasMore = hfResult.value.has_more;
+      updates.hfOffset = hfOffset + hfItems.length;
+    } else if (hfResult.status === "rejected") {
+      failures.push(`HuggingFace: ${String(hfResult.reason)}`);
+      updates.hfHasMore = false;
     }
 
-    try {
-      const batches = await Promise.all(promises);
-      const newItems = batches.flat();
-      newItems.sort((a, b) => b.downloads - a.downloads);
-
-      set((s) => ({
-        results: [...s.results, ...newItems],
-        loadingMore: false,
-      }));
-    } catch {
-      set({ loadingMore: false });
+    if (civitaiResult.status === "fulfilled" && civitaiResult.value) {
+      civitaiItems = civitaiResult.value.models.map(mapCivitaiToUnified);
+      updates.civitaiHasMore = civitaiResult.value.has_more;
+      updates.civitaiCursor = civitaiResult.value.next_cursor;
+    } else if (civitaiResult.status === "rejected") {
+      failures.push(`Civitai: ${String(civitaiResult.reason)}`);
+      updates.civitaiHasMore = false;
     }
+
+    set((s) => ({
+      ...updates,
+      results: [...s.results, ...mergeResults(hfItems, civitaiItems, sort)],
+      error: describeFailures(failures) ?? s.error,
+    }));
   },
 
   reset: () =>
@@ -332,7 +319,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       hfHasMore: false,
       hfOffset: 0,
       civitaiHasMore: false,
-      civitaiPage: 1,
+      civitaiCursor: null,
       loading: false,
       loadingMore: false,
       error: null,
@@ -389,10 +376,13 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       );
       set((s) => ({
         modelFiles: { ...s.modelFiles, [modelId]: resp.files },
-        loadingFiles: null,
+        loadingFiles: s.loadingFiles === modelId ? null : s.loadingFiles,
       }));
     } catch (e) {
-      set({ loadingFiles: null, error: String(e) });
+      set((s) => ({
+        loadingFiles: s.loadingFiles === modelId ? null : s.loadingFiles,
+        error: `HuggingFace: ${String(e)}`,
+      }));
     }
   },
 

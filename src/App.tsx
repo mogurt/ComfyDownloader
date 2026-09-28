@@ -37,10 +37,15 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      await loadSettings();
-      await loadRules();
-      await resetStaleTasks();
-      await loadTasks();
+      try {
+        await loadSettings();
+        await loadRules();
+        await resetStaleTasks();
+        await loadTasks();
+      } catch (e) {
+        // Otherwise the app silently shows empty settings and task lists.
+        useTaskStore.getState().addLog("error", `Failed to load local data: ${String(e)}`);
+      }
       try {
         const ready = await api.isAria2Ready();
         if (ready) {
