@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ComfyDownloader",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "io.github.mogurt.comfydownloader",
   "build": {
     "frontendDist": "../dist",
@@ -36,6 +36,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/aria2c"]
+    "externalBin": [
+      "binaries/aria2c"
+    ]
   }
 }
