@@ -1,9 +1,10 @@
 use crate::aria2::rpc::Aria2Rpc;
 use crate::model_type::rules::{suggest_model_type, UserRule};
+use crate::model_type::ModelType;
 use crate::safety::{redact_url, validate_filename};
 use crate::url_parser;
 use crate::url_parser::ParseResult;
-use log::info;
+use log::{info, warn};
 use std::path::Path;
 use std::sync::Arc;
 use tauri::State;
@@ -48,13 +49,41 @@ pub async fn suggest_type(
     api_type: Option<String>,
     rules_json: String,
 ) -> Result<String, String> {
-    let rules: Vec<UserRule> = serde_json::from_str(&rules_json).unwrap_or_default();
+    let rules = parse_user_rules(&rules_json)?;
     Ok(suggest_model_type(
         &filename,
         &url,
         api_type.as_deref(),
         &rules,
     ))
+}
+
+/// Malformed JSON is an error; individual rules that don't parse or point at an
+/// unknown model type are skipped with a warning instead of silently dropping
+/// every rule.
+fn parse_user_rules(rules_json: &str) -> Result<Vec<UserRule>, String> {
+    let raw: Vec<serde_json::Value> =
+        serde_json::from_str(rules_json).map_err(|e| format!("Invalid rules JSON: {}", e))?;
+
+    Ok(raw
+        .into_iter()
+        .filter_map(
+            |value| match serde_json::from_value::<UserRule>(value.clone()) {
+                Ok(rule) if ModelType::from_str(&rule.model_type).is_some() => Some(rule),
+                Ok(rule) => {
+                    warn!(
+                        "Ignoring rule {} with unknown model type {:?}",
+                        rule.id, rule.model_type
+                    );
+                    None
+                }
+                Err(e) => {
+                    warn!("Ignoring malformed rule {}: {}", value, e);
+                    None
+                }
+            },
+        )
+        .collect())
 }
 
 #[tauri::command]
@@ -186,7 +215,22 @@ pub async fn apply_aria2_runtime_settings(
 
 #[cfg(test)]
 mod tests {
-    use super::next_free_filename;
+    use super::{next_free_filename, parse_user_rules};
+
+    #[test]
+    fn skips_invalid_rules_but_keeps_valid_ones() {
+        let json = r#"[
+            {"id": 1, "rule_type": "filename", "keyword": "a", "model_type": "lora", "priority": 1, "enabled": true, "created_at": "x"},
+            {"id": 2, "rule_type": "filename", "keyword": "b", "model_type": "not-a-type", "priority": 1, "enabled": true},
+            {"id": 3, "keyword": "missing fields"}
+        ]"#;
+        let rules = parse_user_rules(json).unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].id, 1);
+
+        assert!(parse_user_rules("not json").is_err());
+        assert!(parse_user_rules("[]").unwrap().is_empty());
+    }
     use std::fs;
 
     #[test]
