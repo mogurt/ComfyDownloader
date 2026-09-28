@@ -108,6 +108,10 @@ async fn fetch_version_metadata(
         .send()
         .await
         .map_err(|e| format!("Failed to fetch Civitai metadata: {}", e))?;
+    // A 401/404 body is JSON too; don't mistake it for version metadata.
+    if !resp.status().is_success() {
+        return Err(format!("Civitai metadata returned {}", resp.status()));
+    }
     resp.json::<Value>()
         .await
         .map_err(|e| format!("Failed to parse Civitai metadata: {}", e))
@@ -148,13 +152,25 @@ async fn fetch_filename_from_head(
         .unwrap_or_else(|| "unknown_model".to_string()))
 }
 
+/// Prefers the RFC 5987 `filename*=charset'lang'percent-encoded` form (only it
+/// is percent-decoded), then falls back to a plain or quoted `filename=`.
 fn extract_filename_from_content_disposition(cd: &str) -> Option<String> {
-    let re = Regex::new(r#"filename\*?=(?:UTF-8''|"?)([^";]+)"?"#).ok()?;
-    re.captures(cd).map(|c| {
-        let name = c[1].to_string();
-        urlencoding::decode(&name)
-            .unwrap_or(name.clone().into())
-            .to_string()
+    let extended = Regex::new(r#"(?i)filename\*\s*=\s*"?[\w-]*'[^']*'([^";]+)"?"#).ok()?;
+    if let Some(c) = extended.captures(cd) {
+        let raw = c[1].trim();
+        return Some(
+            urlencoding::decode(raw)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| raw.to_string()),
+        );
+    }
+
+    let plain = Regex::new(r#"(?i)filename\s*=\s*(?:"([^"]+)"|([^;]+))"#).ok()?;
+    plain.captures(cd).and_then(|c| {
+        c.get(1)
+            .or_else(|| c.get(2))
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty())
     })
 }
 
@@ -236,6 +252,28 @@ mod tests {
             "attachment; filename*=UTF-8''flux%20model.safetensors",
         );
         assert_eq!(filename, Some("flux model.safetensors".to_string()));
+
+        // Lower-case charset, and `filename*` wins over `filename`.
+        assert_eq!(
+            extract_filename_from_content_disposition(
+                "attachment; filename=\"fallback.safetensors\"; filename*=utf-8''real%20name.safetensors"
+            ),
+            Some("real name.safetensors".to_string())
+        );
+        // Plain quoted names are taken literally, not percent-decoded.
+        assert_eq!(
+            extract_filename_from_content_disposition(
+                "attachment; filename=\"100%25 real.safetensors\""
+            ),
+            Some("100%25 real.safetensors".to_string())
+        );
+        assert_eq!(
+            extract_filename_from_content_disposition(
+                "ATTACHMENT; FILENAME=easynegative.safetensors"
+            ),
+            Some("easynegative.safetensors".to_string())
+        );
+        assert_eq!(extract_filename_from_content_disposition("inline"), None);
     }
 
     #[test]

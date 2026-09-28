@@ -58,6 +58,9 @@ impl Aria2Process {
             format!("--rpc-secret={}", self.secret),
             // Ignore ~/.aria2/aria2.conf so a user config cannot e.g. expose RPC.
             "--no-conf=true".to_string(),
+            // If the app crashes or is killed, kill_on_drop never runs: let aria2
+            // exit on its own instead of lingering and holding file locks.
+            format!("--stop-with-process={}", std::process::id()),
             "--auto-file-renaming=false".to_string(),
             "--allow-overwrite=false".to_string(),
             "--enable-color=false".to_string(),

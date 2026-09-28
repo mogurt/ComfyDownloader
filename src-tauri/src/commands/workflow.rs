@@ -268,8 +268,22 @@ pub async fn check_models_local(
 
     info!("Checking {} models in {}", filenames.len(), base_dir);
 
-    let mut index: HashMap<String, String> = HashMap::new();
-    build_file_index(base, &mut index);
+    // Model trees can be large (and on network drives): keep the blocking walk
+    // off the async runtime.
+    let base_owned = base.to_path_buf();
+    let index = tokio::task::spawn_blocking(move || {
+        let mut index: HashMap<String, String> = HashMap::new();
+        walk_files(&base_owned, &mut |path| {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                index
+                    .entry(name.to_lowercase())
+                    .or_insert_with(|| path.to_string_lossy().to_string());
+            }
+        });
+        index
+    })
+    .await
+    .map_err(|e| format!("Model scan failed: {}", e))?;
 
     let results: Vec<ModelLocalStatus> = filenames
         .iter()
@@ -296,23 +310,39 @@ pub async fn check_models_local(
     Ok(results)
 }
 
-fn build_file_index(dir: &Path, index: &mut HashMap<String, String>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
+/// Deepest directory level scanned below the root.
+const MAX_SCAN_DEPTH: usize = 16;
 
+/// Calls `on_file` for every file below `root`. Symlinked / junctioned
+/// directories are followed (common for ComfyUI model folders), but each real
+/// directory is visited once, so link cycles cannot recurse forever.
+fn walk_files(root: &Path, on_file: &mut dyn FnMut(&Path)) {
+    let mut visited = HashSet::new();
+    walk_dir(root, 0, &mut visited, on_file);
+}
+
+fn walk_dir(
+    dir: &Path,
+    depth: usize,
+    visited: &mut HashSet<std::path::PathBuf>,
+    on_file: &mut dyn FnMut(&Path),
+) {
+    if depth > MAX_SCAN_DEPTH {
+        return;
+    }
+    let real = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    if !visited.insert(real) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                let key = name.to_lowercase();
-                if !index.contains_key(&key) {
-                    index.insert(key, path.to_string_lossy().to_string());
-                }
-            }
+            on_file(&path);
         } else if path.is_dir() {
-            build_file_index(&path, index);
+            walk_dir(&path, depth + 1, visited, on_file);
         }
     }
 }
@@ -341,14 +371,19 @@ pub async fn scan_workflow_dir(comfyui_root: String) -> Result<Vec<WorkflowFileI
         root.join("output"),
     ];
 
-    let mut results = Vec::new();
-    let mut seen_paths = HashSet::new();
-
-    for dir in &candidate_dirs {
-        if dir.is_dir() {
-            collect_json_files(dir, &mut results, &mut seen_paths);
+    // `output/` can hold tens of thousands of files: scan off the async runtime.
+    let mut results = tokio::task::spawn_blocking(move || {
+        let mut results = Vec::new();
+        let mut seen_paths = HashSet::new();
+        for dir in candidate_dirs.iter().filter(|d| d.is_dir()) {
+            walk_files(dir, &mut |path| {
+                collect_json_file(path, &mut results, &mut seen_paths)
+            });
         }
-    }
+        results
+    })
+    .await
+    .map_err(|e| format!("Workflow scan failed: {}", e))?;
 
     results.sort_by(|a, b| b.modified.cmp(&a.modified));
 
@@ -361,48 +396,75 @@ pub async fn scan_workflow_dir(comfyui_root: String) -> Result<Vec<WorkflowFileI
     Ok(results)
 }
 
-fn collect_json_files(dir: &Path, results: &mut Vec<WorkflowFileInfo>, seen: &mut HashSet<String>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext.eq_ignore_ascii_case("json") {
-                    let path_str = path.to_string_lossy().to_string();
-                    if seen.insert(path_str.clone()) {
-                        let meta = std::fs::metadata(&path).ok();
-                        let size = meta.as_ref().map_or(0, |m| m.len());
-                        let modified = meta
-                            .and_then(|m| m.modified().ok())
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs().to_string());
-                        let filename = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("")
-                            .to_string();
-                        results.push(WorkflowFileInfo {
-                            path: path_str,
-                            filename,
-                            size,
-                            modified,
-                        });
-                    }
-                }
-            }
-        } else if path.is_dir() {
-            collect_json_files(&path, results, seen);
-        }
+fn collect_json_file(path: &Path, results: &mut Vec<WorkflowFileInfo>, seen: &mut HashSet<String>) {
+    let is_json = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+    if !is_json {
+        return;
     }
+    let path_str = path.to_string_lossy().to_string();
+    if !seen.insert(path_str.clone()) {
+        return;
+    }
+    let meta = std::fs::metadata(path).ok();
+    let size = meta.as_ref().map_or(0, |m| m.len());
+    let modified = meta
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs().to_string());
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    results.push(WorkflowFileInfo {
+        path: path_str,
+        filename,
+        size,
+        modified,
+    });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::detect_and_extract;
+    use super::{detect_and_extract, walk_files};
+
+    fn temp_tree(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("cd-walk-{}-{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("a").join("b")).unwrap();
+        std::fs::write(dir.join("top.json"), b"{}").unwrap();
+        std::fs::write(dir.join("a").join("b").join("deep.safetensors"), b"x").unwrap();
+        dir
+    }
+
+    fn collect(root: &std::path::Path) -> Vec<String> {
+        let mut names = Vec::new();
+        walk_files(root, &mut |p| {
+            names.push(p.file_name().unwrap().to_string_lossy().to_string())
+        });
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn walks_nested_directories() {
+        let dir = temp_tree("nested");
+        assert_eq!(collect(&dir), vec!["deep.safetensors", "top.json"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_cycles_terminate() {
+        let dir = temp_tree("cycle");
+        // a/b/loop -> dir: without cycle detection this recurses forever.
+        std::os::unix::fs::symlink(&dir, dir.join("a").join("b").join("loop")).unwrap();
+        assert_eq!(collect(&dir), vec!["deep.safetensors", "top.json"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
     use serde_json::json;
 
     #[test]

@@ -47,8 +47,9 @@ pub fn get_default_dir_mappings(comfyui_root: String) -> Vec<DirMapping> {
 #[tauri::command]
 pub fn open_directory(path: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
-    if !p.exists() {
-        return Err(format!("Path does not exist: {}", path));
+    // Only directories: handing a file to explorer/open would run or open it.
+    if !p.is_dir() {
+        return Err(format!("Not a directory: {}", path));
     }
     info!("Opening directory: {}", path);
 
