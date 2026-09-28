@@ -156,6 +156,9 @@ where
             if line.is_empty() {
                 continue;
             }
+            // aria2 echoes request URIs, which may carry API tokens.
+            let line = crate::safety::redact_text(line);
+            let line = line.as_str();
 
             let lowered = line.to_ascii_lowercase();
             let level = if lowered.contains("error") {

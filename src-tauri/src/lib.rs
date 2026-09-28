@@ -2,6 +2,7 @@ mod aria2;
 mod commands;
 mod db;
 mod model_type;
+mod safety;
 mod url_parser;
 
 use aria2::process::{find_available_port, resolve_aria2_path, Aria2Process};

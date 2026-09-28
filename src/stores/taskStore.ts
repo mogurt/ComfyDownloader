@@ -43,23 +43,21 @@ function matchesTaskGid(taskGid: string | null | undefined, reportedGid: string)
   return normalizedTaskGid === normalizedReportedGid || normalizedTaskGid.startsWith(normalizedReportedGid);
 }
 
-function isHuggingFaceUrl(url: string): boolean {
+function hostMatches(url: string, domains: string[]): boolean {
   try {
-    const parsed = new URL(url);
-    const host = parsed.host.toLowerCase();
-    return host.includes("huggingface.co") || host.includes("hf-mirror.com");
+    const host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+    return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
   } catch {
     return false;
   }
 }
 
+function isHuggingFaceUrl(url: string): boolean {
+  return hostMatches(url, ["huggingface.co", "hf-mirror.com"]);
+}
+
 function isCivitaiUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.toLowerCase().includes("civitai.com");
-  } catch {
-    return false;
-  }
+  return hostMatches(url, ["civitai.com"]);
 }
 
 async function getDb(): Promise<Database> {

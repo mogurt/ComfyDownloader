@@ -3,7 +3,10 @@ use log::info;
 use url::Url;
 
 pub async fn parse(raw_url: &str, proxy: Option<&str>) -> Result<ParseResult, String> {
-    info!("Parsing generic URL: {}", raw_url);
+    info!(
+        "Parsing generic URL: {}",
+        crate::safety::redact_url(raw_url)
+    );
 
     let url = Url::parse(raw_url).map_err(|e| format!("Invalid URL: {}", e))?;
 

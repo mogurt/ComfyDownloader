@@ -1,5 +1,6 @@
 use crate::aria2::rpc::Aria2Rpc;
 use crate::model_type::rules::{suggest_model_type, UserRule};
+use crate::safety::{redact_url, validate_filename};
 use crate::url_parser;
 use crate::url_parser::ParseResult;
 use log::info;
@@ -58,6 +59,7 @@ pub async fn suggest_type(
 
 #[tauri::command]
 pub async fn check_file_exists(dir: String, filename: String) -> Result<bool, String> {
+    validate_filename(&filename)?;
     let path = Path::new(&dir).join(&filename);
     Ok(path.exists())
 }
@@ -70,9 +72,15 @@ pub async fn create_download(
     filename: String,
     headers: Option<Vec<String>>,
 ) -> Result<String, String> {
+    validate_filename(&filename)?;
     let rpc = get_rpc(&rpc_state).await?;
 
-    info!("Creating download: {} -> {}/{}", url, dir, filename);
+    info!(
+        "Creating download: {} -> {}/{}",
+        redact_url(&url),
+        dir,
+        filename
+    );
 
     let gid = rpc.add_uri(vec![url], &dir, &filename, headers).await?;
 

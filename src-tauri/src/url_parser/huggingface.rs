@@ -8,7 +8,10 @@ pub async fn parse(
     proxy: Option<&str>,
     token: Option<&str>,
 ) -> Result<ParseResult, String> {
-    info!("Parsing HuggingFace URL: {}", raw_url);
+    info!(
+        "Parsing HuggingFace URL: {}",
+        crate::safety::redact_url(raw_url)
+    );
 
     let url = Url::parse(raw_url).map_err(|e| format!("Invalid URL: {}", e))?;
     let path = url.path();
