@@ -42,6 +42,12 @@ export default function TaskInput() {
   const [selectedSubSubdir, setSelectedSubSubdir] = useState<string>("");
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Latest URL in the input, so a slow parse of an older URL can be discarded.
+  const latestUrlRef = useRef("");
+  const parsingUrlRef = useRef("");
+  const parsedUrlRef = useRef("");
+  // Subdir picked automatically by the last parse (cleared when the URL changes).
+  const autoSubdirRef = useRef("");
 
   const { addTask, startDownload, addLog, aria2Ready } = useTaskStore();
   const { settings, rules, updateSetting } = useSettingsStore();
@@ -86,6 +92,9 @@ export default function TaskInput() {
   const doParse = useCallback(async (inputUrl: string) => {
     const trimmed = inputUrl.trim();
     if (!trimmed || !looksLikeUrl(trimmed) || trimmed === parsedUrl) return;
+    if (trimmed === parsingUrlRef.current || trimmed === parsedUrlRef.current) return;
+    parsingUrlRef.current = trimmed;
+    const isStale = () => latestUrlRef.current.trim() !== trimmed;
     setParsing(true);
     setRecommendation("");
     try {
@@ -95,8 +104,10 @@ export default function TaskInput() {
         settings.civitai_api_token || undefined,
         settings.huggingface_token || undefined
       );
+      if (isStale()) return;
       setFilename(result.filename);
       setParsedUrl(trimmed);
+      parsedUrlRef.current = trimmed;
 
       const rulesJson = JSON.stringify(rules);
       const suggestedType = await api.suggestType(
@@ -105,11 +116,13 @@ export default function TaskInput() {
         result.suggested_type || undefined,
         rulesJson
       );
+      if (isStale()) return;
 
       const matched = api.matchSubdir(suggestedType, subdirs);
       if (matched) {
         setSelectedSubdir(matched);
         setSelectedSubSubdir("");
+        autoSubdirRef.current = matched;
       }
 
       const displayDir = matched || t("taskInput.noMatch");
@@ -119,15 +132,32 @@ export default function TaskInput() {
         source: result.source,
       }));
     } catch (e) {
+      if (isStale()) return;
       addLog("error", translate("taskInput.log.parseFailed", { error: String(e) }));
       setRecommendation(`${t("common.error")}: ${String(e)}`);
     } finally {
-      setParsing(false);
+      if (parsingUrlRef.current === trimmed) {
+        parsingUrlRef.current = "";
+        setParsing(false);
+      }
     }
   }, [parsedUrl, settings.proxy, settings.civitai_api_token, settings.huggingface_token, subdirs, rules, addLog, t]);
 
   const handleUrlChange = (value: string) => {
     setUrl(value);
+    latestUrlRef.current = value;
+    if (value.trim() !== parsedUrl) {
+      // Never let a new URL inherit the previous URL's filename / folder.
+      setParsedUrl("");
+      parsedUrlRef.current = "";
+      setFilename("");
+      setRecommendation("");
+      if (autoSubdirRef.current && selectedSubdir === autoSubdirRef.current) {
+        setSelectedSubdir("");
+        setSelectedSubSubdir("");
+      }
+      autoSubdirRef.current = "";
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (looksLikeUrl(value)) {
       debounceRef.current = setTimeout(() => doParse(value), 600);
@@ -138,6 +168,7 @@ export default function TaskInput() {
     const pasted = e.clipboardData.getData("text");
     if (looksLikeUrl(pasted)) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      latestUrlRef.current = pasted;
       setTimeout(() => doParse(pasted), 50);
     }
   };
@@ -182,7 +213,13 @@ export default function TaskInput() {
       return;
     }
 
-    const exists = await api.checkFileExists(resolvedTargetDir, filename);
+    let exists: boolean;
+    try {
+      exists = await api.checkFileExists(resolvedTargetDir, filename);
+    } catch (e) {
+      addLog("error", String(e));
+      return;
+    }
     if (exists && settings.duplicate_strategy === "skip") {
       addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename }));
       await addTask({
@@ -234,6 +271,9 @@ export default function TaskInput() {
     setSelectedSubSubdir("");
     setRecommendation("");
     setParsedUrl("");
+    latestUrlRef.current = "";
+    parsedUrlRef.current = "";
+    autoSubdirRef.current = "";
   };
 
   const showDropdowns = !!baseDir && !isManual;

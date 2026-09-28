@@ -12,6 +12,18 @@ async function getDb(): Promise<Database> {
   return db;
 }
 
+// Settings inputs are controlled components: state must update synchronously on
+// every keystroke, while DB writes and aria2 syncs are debounced.
+const WRITE_DEBOUNCE_MS = 300;
+const ARIA2_SYNC_DEBOUNCE_MS = 800;
+const ARIA2_KEYS = ["aria2_max_concurrent", "aria2_max_connections", "proxy"];
+
+const pendingWrites = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; waiters: Array<() => void> }
+>();
+let aria2SyncTimer: ReturnType<typeof setTimeout> | undefined;
+
 interface SettingsState {
   settings: AppSettings;
   dirMappings: DirMapping[];
@@ -63,22 +75,39 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ settings, loaded: true });
   },
 
-  updateSetting: async (key: string, value: string) => {
-    try {
-      const database = await getDb();
-      await database.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)",
-        [key, value]
-      );
-      const settings = { ...get().settings, [key]: value };
-      set({ settings });
-      if (["aria2_max_concurrent", "aria2_max_connections", "proxy"].includes(key)) {
-        await get().syncAria2Settings();
-      }
-    } catch (e) {
-      console.error(`[Settings] Failed to update ${key}:`, e);
-      throw e;
+  updateSetting: (key: string, value: string) => {
+    set({ settings: { ...get().settings, [key]: value } });
+
+    if (ARIA2_KEYS.includes(key)) {
+      clearTimeout(aria2SyncTimer);
+      aria2SyncTimer = setTimeout(() => void get().syncAria2Settings(), ARIA2_SYNC_DEBOUNCE_MS);
     }
+
+    // Resolves once the (debounced) value has been persisted.
+    return new Promise<void>((resolve) => {
+      const pending = pendingWrites.get(key);
+      const waiters = pending ? pending.waiters : [];
+      if (pending) clearTimeout(pending.timer);
+      waiters.push(resolve);
+
+      const timer = setTimeout(async () => {
+        pendingWrites.delete(key);
+        try {
+          const latest = (get().settings as unknown as Record<string, string>)[key];
+          const database = await getDb();
+          await database.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)",
+            [key, latest]
+          );
+        } catch (e) {
+          console.error(`[Settings] Failed to save ${key}:`, e);
+        } finally {
+          waiters.forEach((done) => done());
+        }
+      }, WRITE_DEBOUNCE_MS);
+
+      pendingWrites.set(key, { timer, waiters });
+    });
   },
 
   syncAria2Settings: async () => {

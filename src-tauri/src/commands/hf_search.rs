@@ -125,7 +125,6 @@ pub struct HfFileEntry {
 pub struct CivitaiModelInfo {
     pub id: u64,
     pub name: String,
-    #[serde(rename = "type")]
     pub model_type: String,
     pub creator: Option<String>,
     pub download_count: u64,
