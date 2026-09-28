@@ -60,6 +60,25 @@ function isCivitaiUrl(url: string): boolean {
   return hostMatches(url, ["civitai.com"]);
 }
 
+/** Optional post-download check that ComfyUI can see the new model file. */
+async function verifyInComfyui(task: DownloadTask) {
+  const { settings } = useSettingsStore.getState();
+  if (settings.auto_verify_comfyui !== "true" || !settings.comfyui_server.trim()) return;
+
+  const meta = { taskId: task.id, gid: task.gid || null };
+  const { addTaskLog } = useTaskStore.getState();
+  try {
+    const found = await api.verifyModelInComfyui(settings.comfyui_server.trim(), task.filename);
+    addTaskLog(
+      found ? "info" : "warn",
+      translate(found ? "log.verifiedInComfyui" : "log.notVerifiedInComfyui", { filename: task.filename }),
+      meta
+    );
+  } catch (e) {
+    addTaskLog("warn", translate("log.verifyFailed", { filename: task.filename, error: String(e) }), meta);
+  }
+}
+
 async function getDb(): Promise<Database> {
   if (!db) {
     db = await Database.load("sqlite:comfy_downloader.db");
@@ -372,6 +391,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   clearAllTasks: async () => {
+    // Stop aria2 first, otherwise it keeps downloading tasks no longer shown.
+    for (const task of get().tasks) {
+      if (task.status === "queued" || task.status === "downloading" || task.status === "paused") {
+        await get().cancelTask(task);
+      }
+    }
     const database = await getDb();
     await database.execute("DELETE FROM downloads", []);
     set({ tasks: [], selectedTaskId: null, selectedTaskIds: [] });
@@ -607,6 +632,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         taskId: task.id,
         gid,
       });
+      void verifyInComfyui(task);
     }
   },
 

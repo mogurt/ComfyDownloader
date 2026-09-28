@@ -26,7 +26,12 @@ import {
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
-  const date = new Date(value);
+  // SQLite CURRENT_TIMESTAMP is UTC without a zone marker ("YYYY-MM-DD HH:MM:SS");
+  // without the "Z" it would be parsed as local time.
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(" ", "T")}Z`
+    : value;
+  const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
@@ -38,8 +43,9 @@ export default function TaskDetail() {
   const displayStatus = task ? getDisplayTaskStatus(task) : null;
   const statusMeta = displayStatus ? getTaskStatusMeta(t)[displayStatus] : null;
   const visualProgress = task ? getTaskVisualProgress(task) : 0;
-  const remainingBytes = task
-    ? Math.max(0, (task.file_size ?? 0) - (task.downloaded_size ?? 0))
+  // Unknown total size means unknown ETA, not "0s".
+  const remainingBytes = task && task.file_size
+    ? Math.max(0, task.file_size - (task.downloaded_size ?? 0))
     : null;
   const etaSeconds = task && displayStatus === "downloading" && task.speed > 0 && remainingBytes != null
     ? remainingBytes / task.speed

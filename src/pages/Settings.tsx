@@ -247,7 +247,7 @@ export default function Settings() {
               </SettingRow>
               <SettingRow label={t("settings.duplicateStrategy")}>
                 <Select
-                  value={settings.duplicate_strategy}
+                  value={settings.duplicate_strategy === "rename" ? "rename" : "skip"}
                   onValueChange={(v) => { if (v) updateSetting("duplicate_strategy", v); }}
                 >
                   <SelectTrigger className="w-[160px]">
@@ -256,7 +256,6 @@ export default function Settings() {
                   <SelectContent>
                     <SelectItem value="skip">{t("settings.duplicate.skip")}</SelectItem>
                     <SelectItem value="rename">{t("settings.duplicate.rename")}</SelectItem>
-                    <SelectItem value="overwrite">{t("settings.duplicate.overwrite")}</SelectItem>
                   </SelectContent>
                 </Select>
               </SettingRow>

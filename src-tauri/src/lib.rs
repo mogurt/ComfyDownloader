@@ -52,6 +52,7 @@ pub fn run() {
             commands::download::parse_download_url,
             commands::download::suggest_type,
             commands::download::check_file_exists,
+            commands::download::unique_filename,
             commands::download::create_download,
             commands::download::pause_download,
             commands::download::resume_download,
