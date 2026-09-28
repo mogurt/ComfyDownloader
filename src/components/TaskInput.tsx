@@ -19,6 +19,7 @@ import { Download, Loader2, FolderOpen } from "lucide-react";
 import { useTaskStore } from "@/stores/taskStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import * as api from "@/lib/api";
+import { getModelBaseDir, joinPath } from "@/lib/utils";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useI18n, translate } from "@/lib/i18n";
@@ -45,9 +46,7 @@ export default function TaskInput() {
   const { addTask, startDownload, addLog, aria2Ready } = useTaskStore();
   const { settings, rules, updateSetting } = useSettingsStore();
 
-  const baseDir =
-    settings.model_base_dir ||
-    (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
+  const baseDir = getModelBaseDir(settings);
 
   const loadSubdirs = useCallback(async () => {
     if (!baseDir) {
@@ -72,15 +71,15 @@ export default function TaskInput() {
       setSelectedSubSubdir("");
       return;
     }
-    const fullPath = `${baseDir}\\${selectedSubdir}`;
+    const fullPath = joinPath(baseDir, selectedSubdir);
     api.listSubdirs(fullPath).then(setSubSubdirs).catch(() => setSubSubdirs([]));
   }, [baseDir, selectedSubdir]);
 
   const targetDir = baseDir
     ? selectedSubSubdir
-      ? `${baseDir}\\${selectedSubdir}\\${selectedSubSubdir}`
+      ? joinPath(baseDir, selectedSubdir, selectedSubSubdir)
       : selectedSubdir && selectedSubdir !== "__manual__"
-        ? `${baseDir}\\${selectedSubdir}`
+        ? joinPath(baseDir, selectedSubdir)
         : ""
     : "";
 

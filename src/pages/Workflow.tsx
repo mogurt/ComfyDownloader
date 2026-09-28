@@ -3,6 +3,7 @@ import { useI18n } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import * as api from "@/lib/api";
+import { getModelBaseDir } from "@/lib/utils";
 import type {
   WorkflowModelRef,
   ModelLocalStatus,
@@ -40,7 +41,7 @@ export default function Workflow({
 }: WorkflowPageProps) {
   const { t } = useI18n();
   const comfyuiRoot = useSettingsStore((s) => s.settings.comfyui_root);
-  const modelBaseDir = useSettingsStore((s) => s.settings.model_base_dir);
+  const modelBaseDir = useSettingsStore((s) => getModelBaseDir(s.settings));
 
   const [analysis, setAnalysis] = useState<WorkflowAnalysis | null>(null);
   const [loading, setLoading] = useState(false);

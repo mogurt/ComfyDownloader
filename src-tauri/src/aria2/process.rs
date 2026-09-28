@@ -210,11 +210,21 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
         "aria2c"
     };
 
-    let resource_candidates = [
-        resource_dir.join("binaries").join(&exe_name),
-        resource_dir.join("binaries").join(&sidecar_name),
-    ];
-    for path in resource_candidates {
+    // Tauri bundles `externalBin` sidecars next to the main executable
+    // (e.g. `Contents/MacOS/` on macOS), with the target triple stripped.
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    let mut candidates = Vec::new();
+    if let Some(dir) = &exe_dir {
+        candidates.push(dir.join(exe_name));
+        candidates.push(dir.join(&sidecar_name));
+    }
+    candidates.push(resource_dir.join("binaries").join(exe_name));
+    candidates.push(resource_dir.join("binaries").join(&sidecar_name));
+
+    for path in candidates {
         if path.exists() {
             return Ok(path);
         }
@@ -252,6 +262,10 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
         }
     }
 
+    warn!(
+        "Bundled aria2 not found next to {:?}; falling back to `{}` on PATH",
+        exe_dir, exe_name
+    );
     Ok(PathBuf::from(exe_name))
 }
 
