@@ -1,7 +1,7 @@
 {
   "name": "comfy-downloader",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A desktop application for downloading AI models to the correct ComfyUI directories, powered by aria2.",
   "license": "MIT",
   "author": "Li Kaixuan <mcyogurtg@gmail.com>",
