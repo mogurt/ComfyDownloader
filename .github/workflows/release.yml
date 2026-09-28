@@ -37,8 +37,9 @@ jobs:
             os: macos-14
             rust-target: aarch64-apple-darwin
             tauri-args: --target aarch64-apple-darwin
+          # Cross-compiled on Apple Silicon: far faster than the Intel runners.
           - label: macos-x64
-            os: macos-15-intel
+            os: macos-14
             rust-target: x86_64-apple-darwin
             tauri-args: --target x86_64-apple-darwin
           - label: windows-x64
@@ -65,15 +66,23 @@ jobs:
         with:
           targets: ${{ matrix.rust-target }}
 
+      # Same keys as ci.yml: releases run on main, so the caches they save are
+      # the ones PR builds restore.
       - name: Cache Cargo registry & build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: ${{ matrix.label }}-release
+          shared-key: ${{ matrix.label }}
+
+      - name: Cache aria2 sidecar
+        uses: actions/cache@v6
+        with:
+          path: src-tauri/binaries
+          key: aria2-${{ matrix.rust-target }}-${{ hashFiles('scripts/prepare-aria2.mjs') }}
 
       - name: Install npm dependencies
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARIA2_TARGET_TRIPLE: ${{ matrix.rust-target }}
         run: npm ci
 
       - name: Resolve release tag

@@ -1,19 +1,69 @@
 name: CI
 
+# Only PRs are checked: `main` requires these checks with "branch must be up
+# to date", so a merged PR was already tested against the exact tree that
+# lands on main and re-running CI on push would only repeat that work.
 on:
-  push:
-    branches: [main, dev]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: filter
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(git diff --name-only "$BASE_SHA"...HEAD)
+          echo "Changed files:"; echo "$files"
+
+          # Anything besides docs needs lint / typecheck / tests.
+          code=false
+          if echo "$files" | grep -qvE '(\.md$|^docs/|^LICENSE$|^\.github/(ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE))'; then
+            code=true
+          fi
+
+          # Native builds only matter when the Rust side, the sidecar, the
+          # dependency set or the workflows change. release-please PRs only
+          # bump versions, and the release build runs right after they merge.
+          native=false
+          if echo "$files" | grep -qE '^(src-tauri/|scripts/|package(-lock)?\.json$|\.github/workflows/)'; then
+            native=true
+          fi
+          case "$HEAD_REF" in release-please--*) native=false ;; esac
+
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+
+  # Skipped jobs still report their (required) check as successful.
   quality:
     name: Quality Checks
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: macos-14
     steps:
       - name: Checkout
@@ -34,24 +84,22 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: quality
+          shared-key: quality
 
       - name: Cache aria2 sidecar
         uses: actions/cache@v6
         with:
           path: src-tauri/binaries
-          key: aria2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-aria2.mjs') }}
+          key: aria2-aarch64-apple-darwin-${{ hashFiles('scripts/prepare-aria2.mjs') }}
 
       - name: Install npm dependencies
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm ci
 
       - name: Lint frontend
         run: npm run lint
 
-      - name: Type-check frontend
-        run: npm run typecheck
+      - name: Type-check and build frontend
+        run: npm run build
 
       - name: Check Rust formatting
         working-directory: src-tauri
@@ -63,7 +111,11 @@ jobs:
 
   build:
     name: Build (${{ matrix.label }})
-    needs: quality
+    needs: [changes, quality]
+    # A skipped matrix job would report an unexpanded check name, which never
+    # satisfies the required checks; so the job always runs and its steps are
+    # skipped instead (on a cheap Linux runner) when no native build is needed.
+    if: ${{ !failure() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -72,8 +124,9 @@ jobs:
             os: macos-14
             rust-target: aarch64-apple-darwin
             tauri-args: --target aarch64-apple-darwin
+          # Cross-compiled on Apple Silicon: far faster than the Intel runners.
           - label: macos-x64
-            os: macos-15-intel
+            os: macos-14
             rust-target: x86_64-apple-darwin
             tauri-args: --target x86_64-apple-darwin
           - label: windows-x64
@@ -81,39 +134,53 @@ jobs:
             rust-target: x86_64-pc-windows-msvc
             tauri-args: ""
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ needs.changes.outputs.native == 'true' && matrix.os || 'ubuntu-latest' }}
 
     steps:
+      - name: Skip (no native changes)
+        if: ${{ needs.changes.outputs.native != 'true' }}
+        run: echo "No changes affecting native builds; skipping."
+
       - name: Checkout
+        if: ${{ needs.changes.outputs.native == 'true' }}
         uses: actions/checkout@v6
 
       - name: Setup Node.js
+        if: ${{ needs.changes.outputs.native == 'true' }}
         uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
 
       - name: Setup Rust
+        if: ${{ needs.changes.outputs.native == 'true' }}
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust-target }}
 
+      # Shared with release.yml. Only runs on main (releases) save, so PR
+      # caches don't evict main's from the repo's 10 GB cache quota.
       - name: Cache Cargo registry & build
+        if: ${{ needs.changes.outputs.native == 'true' }}
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: ${{ matrix.label }}
+          shared-key: ${{ matrix.label }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cache aria2 sidecar
+        if: ${{ needs.changes.outputs.native == 'true' }}
         uses: actions/cache@v6
         with:
           path: src-tauri/binaries
-          key: aria2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-aria2.mjs') }}
+          key: aria2-${{ matrix.rust-target }}-${{ hashFiles('scripts/prepare-aria2.mjs') }}
 
       - name: Install npm dependencies
+        if: ${{ needs.changes.outputs.native == 'true' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARIA2_TARGET_TRIPLE: ${{ matrix.rust-target }}
         run: npm ci
 
       - name: Build Tauri app
+        if: ${{ needs.changes.outputs.native == 'true' }}
         run: npx tauri build ${{ matrix.tauri-args }}
