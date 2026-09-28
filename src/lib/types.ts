@@ -189,7 +189,7 @@ export interface CivitaiFileEntry {
 export interface CivitaiSearchResponse {
   models: CivitaiModelInfo[];
   has_more: boolean;
-  next_page: string | null;
+  next_cursor: string | null;
 }
 
 export interface CivitaiSearchParams {
@@ -198,7 +198,8 @@ export interface CivitaiSearchParams {
   sort?: string;
   period?: string;
   limit?: number;
-  page?: number;
+  /** Cursor from the previous response; keyword searches can't use pages. */
+  cursor?: string;
 }
 
 // --- Unified Search ---

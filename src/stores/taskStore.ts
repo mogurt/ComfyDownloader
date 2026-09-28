@@ -60,6 +60,26 @@ function isCivitaiUrl(url: string): boolean {
   return hostMatches(url, ["civitai.com"]);
 }
 
+// Progress is persisted at most this often per task while downloading, so a
+// crash or restart loses little without writing on every poll.
+const PROGRESS_PERSIST_INTERVAL_MS = 10_000;
+const lastProgressPersist = new Map<number, number>();
+
+async function persistProgressThrottled(id: number, progress: number, fileSize: number | null | undefined) {
+  const now = Date.now();
+  if (now - (lastProgressPersist.get(id) ?? 0) < PROGRESS_PERSIST_INTERVAL_MS) return;
+  lastProgressPersist.set(id, now);
+  try {
+    const database = await getDb();
+    await database.execute(
+      "UPDATE downloads SET progress=$1, file_size=COALESCE($2, file_size) WHERE id=$3",
+      [progress, fileSize || null, id]
+    );
+  } catch (e) {
+    console.warn("[Tasks] Failed to persist progress:", e);
+  }
+}
+
 /** Optional post-download check that ComfyUI can see the new model file. */
 async function verifyInComfyui(task: DownloadTask) {
   const { settings } = useSettingsStore.getState();
@@ -247,7 +267,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     );
     set({
       tasks: rows.map((row) => ({
-        downloaded_size: row.downloaded_size ?? 0,
+        // Only progress and file size are stored; derive the byte count.
+        downloaded_size:
+          row.downloaded_size
+          ?? (row.file_size && row.progress ? Math.round((row.file_size * row.progress) / 100) : 0),
         last_active_at: row.last_active_at ?? null,
         runtime_phase: null,
         allocation_progress: null,
@@ -257,9 +280,32 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   resetStaleTasks: async () => {
+    // Runs on every webview load. After an app restart aria2 is fresh and
+    // knows none of the gids, but after a mere page reload it is still
+    // downloading: only pause tasks aria2 no longer knows about. Tasks it
+    // does know are reconciled by the regular polling.
     const database = await getDb();
+    const rows = await database.select<{ id: number; gid: string | null }[]>(
+      "SELECT id, gid FROM downloads WHERE status IN ('downloading', 'queued')"
+    );
+    const stale: number[] = [];
+    for (const row of rows) {
+      let known = false;
+      if (row.gid) {
+        try {
+          await api.getDownloadStatus(row.gid);
+          known = true;
+        } catch {
+          // Unknown gid, or aria2 not connected yet (fresh start).
+        }
+      }
+      if (!known) stale.push(row.id);
+    }
+    if (stale.length === 0) return;
+    const placeholders = stale.map((_, i) => `$${i + 1}`).join(", ");
     await database.execute(
-      "UPDATE downloads SET status='paused', speed=0 WHERE status IN ('downloading', 'queued')"
+      `UPDATE downloads SET status='paused', speed=0 WHERE id IN (${placeholders})`,
+      stale
     );
   },
 
@@ -325,6 +371,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
     if (status === "completed") {
       sql += `, completed_at=CURRENT_TIMESTAMP, progress=100`;
+    }
+    // Keep progress and size across restarts for tasks that stop here.
+    const current = get().tasks.find((t) => t.id === id);
+    if (current && (status === "paused" || status === "failed" || status === "completed")) {
+      if (status !== "completed" && extra.progress === undefined) {
+        sql += `, progress=$${paramIdx}`;
+        params.push(current.progress);
+        paramIdx++;
+      }
+      if (current.file_size) {
+        sql += `, file_size=$${paramIdx}`;
+        params.push(current.file_size);
+        paramIdx++;
+      }
     }
 
     sql += ` WHERE id=$${paramIdx}`;
@@ -763,6 +823,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               ? { runtime_phase: null, allocation_progress: null }
               : {}),
           });
+
+          void persistProgressThrottled(task.id, progress, total || task.file_size);
 
           if (aria2Status === "active" && task.status !== "downloading" && (!task.runtime_phase || hasTransferStarted)) {
             await get().updateTaskStatus(task.id, "downloading");

@@ -155,7 +155,8 @@ pub struct CivitaiFileEntry {
 pub struct CivitaiSearchResponse {
     pub models: Vec<CivitaiModelInfo>,
     pub has_more: bool,
-    pub next_page: Option<String>,
+    /// Keyword searches only support cursor pagination (`page` is rejected).
+    pub next_cursor: Option<String>,
 }
 
 fn parse_civitai_model(v: &serde_json::Value) -> Option<CivitaiModelInfo> {
@@ -391,7 +392,10 @@ pub async fn get_hf_model_files(
 
     let client = build_client(proxy.as_deref())?;
 
-    let mut request = client.get(format!("{}/models/{}", HF_API_BASE, model_id));
+    // `blobs=true` is required for the API to include file sizes.
+    let mut request = client
+        .get(format!("{}/models/{}", HF_API_BASE, encode_path(&model_id)))
+        .query(&[("blobs", "true")]);
 
     if let Some(ref t) = token {
         if !t.is_empty() {
@@ -423,7 +427,8 @@ pub async fn get_hf_model_files(
             let size = f.lfs.and_then(|l| l.size).or(f.size);
             let download_url = format!(
                 "https://huggingface.co/{}/resolve/main/{}",
-                model_id, filename
+                encode_path(&model_id),
+                encode_path(&filename)
             );
             Some(HfFileEntry {
                 filename,
@@ -438,6 +443,15 @@ pub async fn get_hf_model_files(
     Ok(HfFilesResponse { model_id, files })
 }
 
+/// Percent-encodes each `/`-separated segment (repo ids and file paths may
+/// contain spaces, `#`, `?` and other characters that break URLs).
+fn encode_path(path: &str) -> String {
+    path.split('/')
+        .map(|seg| urlencoding::encode(seg).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 // ── Civitai search command ──
 
 const CIVITAI_API_BASE: &str = "https://civitai.com/api/v1";
@@ -449,7 +463,7 @@ pub async fn search_civitai_models(
     sort: Option<String>,
     period: Option<String>,
     limit: Option<u32>,
-    page: Option<u32>,
+    cursor: Option<String>,
     proxy: Option<String>,
     civitai_token: Option<String>,
 ) -> Result<CivitaiSearchResponse, String> {
@@ -458,7 +472,7 @@ pub async fn search_civitai_models(
         return Ok(CivitaiSearchResponse {
             models: vec![],
             has_more: false,
-            next_page: None,
+            next_cursor: None,
         });
     }
 
@@ -484,10 +498,8 @@ pub async fn search_civitai_models(
         }
     }
 
-    if let Some(p) = page {
-        if p > 1 {
-            params.push(("page", p.to_string()));
-        }
+    if let Some(c) = cursor.filter(|c| !c.is_empty()) {
+        params.push(("cursor", c));
     }
 
     let mut request = client
@@ -527,35 +539,40 @@ pub async fn search_civitai_models(
         .filter_map(|v| parse_civitai_model(v))
         .collect();
 
-    let next_page = body
+    // The cursor may be a string or a number depending on the sort.
+    let next_cursor = body
         .get("metadata")
-        .and_then(|m| m.get("nextPage"))
-        .and_then(|u| u.as_str())
-        .map(|s| s.to_string());
-
-    let current_page = body
-        .get("metadata")
-        .and_then(|m| m.get("currentPage"))
-        .and_then(|p| p.as_u64())
-        .unwrap_or(1);
-    let total_pages = body
-        .get("metadata")
-        .and_then(|m| m.get("totalPages"))
-        .and_then(|p| p.as_u64())
-        .unwrap_or(1);
-
-    let has_more = current_page < total_pages;
+        .and_then(|m| m.get("nextCursor"))
+        .and_then(|c| match c {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        })
+        .filter(|c| !c.is_empty());
 
     info!(
-        "Civitai search returned {} models (page {}/{})",
+        "Civitai search returned {} models (more: {})",
         models.len(),
-        current_page,
-        total_pages
+        next_cursor.is_some()
     );
 
     Ok(CivitaiSearchResponse {
         models,
-        has_more,
-        next_page,
+        has_more: next_cursor.is_some(),
+        next_cursor,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_path;
+
+    #[test]
+    fn encodes_each_path_segment() {
+        assert_eq!(encode_path("org/model"), "org/model");
+        assert_eq!(
+            encode_path("sub dir/my model#1.safetensors"),
+            "sub%20dir/my%20model%231.safetensors"
+        );
+    }
 }
