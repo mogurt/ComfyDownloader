@@ -645,6 +645,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     );
     if (trackedTasks.length === 0) return;
 
+    // gids aria2 no longer knows about (e.g. after an aria2 restart).
+    const lostGids = new Set<string>();
+    const isNotFound = (err: unknown) => String(err).includes("is not found");
+
     try {
       let allDownloads: Aria2Status[];
       try {
@@ -666,6 +670,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               )
             );
           } catch (fallbackError) {
+            if (isNotFound(fallbackError)) lostGids.add(task.gid);
             console.warn(`[Poll] Failed to fetch status for ${task.gid}:`, String(fallbackError));
           }
         }
@@ -677,8 +682,39 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         if (status.gid) statusMap.set(status.gid, status);
       }
 
+      // The bulk call only covers active/waiting downloads. Anything tracked but
+      // missing has stopped (complete/error/removed) or was lost; look it up so a
+      // missed websocket notification cannot leave it "downloading" forever.
       for (const task of trackedTasks) {
+        if (statusMap.has(task.gid) || lostGids.has(task.gid)) continue;
+        try {
+          const status = await withTimeout(
+            api.getDownloadStatus(task.gid),
+            8000,
+            `get_download_status ${task.gid}`
+          );
+          statusMap.set(task.gid, status);
+        } catch (err) {
+          if (isNotFound(err)) lostGids.add(task.gid);
+        }
+      }
+
+      for (const task of trackedTasks) {
+        // Re-read: the task may have been paused/cancelled while we were polling.
+        const current = get().tasks.find((t) => t.id === task.id);
+        if (!current || current.gid !== task.gid) continue;
+        if (current.status !== "downloading" && current.status !== "queued") continue;
+
         const status = statusMap.get(task.gid);
+        if (lostGids.has(task.gid) || status?.status === "removed") {
+          // Resuming re-adds the download; aria2 continues the partial file.
+          await get().updateTaskStatus(task.id, "paused", { speed: 0 });
+          get().addTaskLog("warn", translate("log.paused", { filename: task.filename }), {
+            taskId: task.id,
+            gid: task.gid,
+          });
+          continue;
+        }
         if (status) {
           const total = parseInt(String(status.totalLength ?? "0"), 10);
           const completed = parseInt(String(status.completedLength ?? "0"), 10);

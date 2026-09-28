@@ -4,22 +4,25 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 #[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+const MAX_RESTARTS: u32 = 3;
+/// A process that stayed up this long is considered healthy again.
+const STABLE_RUNTIME: Duration = Duration::from_secs(120);
 
 pub struct Aria2Process {
     child: Arc<Mutex<Option<Child>>>,
     port: u16,
     secret: String,
     restart_count: Arc<Mutex<u32>>,
+    started_at: Arc<Mutex<Option<Instant>>>,
     aria2_path: PathBuf,
     max_concurrent: u32,
     max_connections: u32,
@@ -40,6 +43,7 @@ impl Aria2Process {
             port,
             secret,
             restart_count: Arc::new(Mutex::new(0)),
+            started_at: Arc::new(Mutex::new(None)),
             aria2_path,
             max_concurrent,
             max_connections,
@@ -52,7 +56,8 @@ impl Aria2Process {
             "--enable-rpc".to_string(),
             format!("--rpc-listen-port={}", self.port),
             format!("--rpc-secret={}", self.secret),
-            "--rpc-allow-origin-all=true".to_string(),
+            // Ignore ~/.aria2/aria2.conf so a user config cannot e.g. expose RPC.
+            "--no-conf=true".to_string(),
             "--auto-file-renaming=false".to_string(),
             "--allow-overwrite=false".to_string(),
             "--enable-color=false".to_string(),
@@ -99,10 +104,16 @@ impl Aria2Process {
             spawn_aria2_output_reader(app_handle.clone(), stderr, "stderr");
         }
 
-        let mut guard = self.child.lock().await;
-        *guard = Some(child);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!(
+                "aria2c exited immediately ({}); port {} may be in use",
+                status, self.port
+            ));
+        }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        *self.child.lock().await = Some(child);
+        *self.started_at.lock().await = Some(Instant::now());
 
         info!("aria2c started on port {}", self.port);
         Ok(())
@@ -121,27 +132,39 @@ impl Aria2Process {
     pub async fn is_running(&self) -> bool {
         let mut guard = self.child.lock().await;
         if let Some(ref mut child) = *guard {
-            match child.try_wait() {
-                Ok(None) => true,
-                _ => false,
-            }
+            matches!(child.try_wait(), Ok(None))
         } else {
             false
         }
     }
 
-    pub async fn ensure_running(&self, app_handle: &AppHandle) -> Result<(), String> {
-        if !self.is_running().await {
-            let mut count = self.restart_count.lock().await;
-            if *count >= 3 {
-                return Err("aria2c has crashed too many times (3), giving up".to_string());
-            }
-            warn!("aria2c is not running, restarting (attempt {})", *count + 1);
-            *count += 1;
-            drop(count);
-            self.start(app_handle).await?;
+    /// Restarts aria2c if it died. Returns `Ok(true)` when a restart happened.
+    pub async fn ensure_running(&self, app_handle: &AppHandle) -> Result<bool, String> {
+        if self.is_running().await {
+            return Ok(false);
         }
-        Ok(())
+
+        let mut count = self.restart_count.lock().await;
+        let was_stable = self
+            .started_at
+            .lock()
+            .await
+            .is_some_and(|t| t.elapsed() >= STABLE_RUNTIME);
+        if was_stable {
+            *count = 0;
+        }
+        if *count >= MAX_RESTARTS {
+            return Err(format!(
+                "aria2c has crashed too many times ({}), giving up",
+                MAX_RESTARTS
+            ));
+        }
+        *count += 1;
+        warn!("aria2c is not running, restarting (attempt {})", *count);
+        drop(count);
+
+        self.start(app_handle).await?;
+        Ok(true)
     }
 }
 

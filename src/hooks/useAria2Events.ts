@@ -72,6 +72,7 @@ export function useAria2Events() {
         await listen("aria2://error", (event) => {
           if (cancelled) return;
           const payload = event.payload as { error: string };
+          useTaskStore.getState().setAria2Ready(false);
           useTaskStore.getState().addLog("error", translate("log.aria2Error", { error: payload.error }));
         })
       );
