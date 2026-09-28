@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.1](https://github.com/mogurt/ComfyDownloader/compare/v0.1.0...comfy-downloader-v0.1.1) (2026-09-28)
+## [0.1.1](https://github.com/mogurt/ComfyDownloader/compare/v0.1.0...v0.1.1) (2026-09-28)
 
 
 ### Bug Fixes
