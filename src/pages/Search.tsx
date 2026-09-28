@@ -455,7 +455,7 @@ function ModelCard({
             </span>
             {hf?.private && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                Private
+                {t("search.private")}
               </Badge>
             )}
           </div>
@@ -677,6 +677,7 @@ function OtherFilesSection({
   onRequestDownload: (p: PendingDownload) => void;
   highlightFilename?: string | null;
 }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
   if (files.length === 0) return null;
@@ -695,7 +696,7 @@ function OtherFilesSection({
         ) : (
           <ChevronDown className="h-3 w-3" />
         )}
-        {files.length} other files
+        {t("search.otherFiles", { count: files.length })}
       </button>
       {expanded && (
         <div className="mt-1 space-y-1">

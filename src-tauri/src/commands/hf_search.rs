@@ -215,11 +215,7 @@ fn parse_civitai_model(v: &serde_json::Value) -> Option<CivitaiModelInfo> {
     });
 
     let model_versions: Vec<CivitaiVersionInfo> = versions_raw
-        .map(|vs| {
-            vs.iter()
-                .filter_map(|ver| parse_civitai_version(ver))
-                .collect()
-        })
+        .map(|vs| vs.iter().filter_map(parse_civitai_version).collect())
         .unwrap_or_default();
 
     Some(CivitaiModelInfo {
@@ -299,6 +295,9 @@ fn build_client(proxy: Option<&str>) -> Result<reqwest::Client, String> {
 
 const HF_API_BASE: &str = "https://huggingface.co/api";
 
+// Arguments mirror the frontend invoke() payload 1:1; a params struct would
+// change the IPC contract.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn search_hf_models(
     query: String,
@@ -456,6 +455,9 @@ fn encode_path(path: &str) -> String {
 
 const CIVITAI_API_BASE: &str = "https://civitai.com/api/v1";
 
+// Arguments mirror the frontend invoke() payload 1:1; a params struct would
+// change the IPC contract.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn search_civitai_models(
     query: String,
@@ -534,10 +536,7 @@ pub async fn search_civitai_models(
         .cloned()
         .unwrap_or_default();
 
-    let models: Vec<CivitaiModelInfo> = items
-        .iter()
-        .filter_map(|v| parse_civitai_model(v))
-        .collect();
+    let models: Vec<CivitaiModelInfo> = items.iter().filter_map(parse_civitai_model).collect();
 
     // The cursor may be a string or a number depending on the sort.
     let next_cursor = body

@@ -147,7 +147,7 @@ async fn fetch_filename_from_head(
         .ok()
         .and_then(|u| {
             u.path_segments()
-                .and_then(|s| s.last().map(|l| l.to_string()))
+                .and_then(|mut s| s.next_back().map(|l| l.to_string()))
         })
         .unwrap_or_else(|| "unknown_model".to_string()))
 }

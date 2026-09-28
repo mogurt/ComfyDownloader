@@ -39,3 +39,18 @@ export function formatTransferred(
   }
   return formatSize(downloaded ?? 0);
 }
+
+/** Parses a stored timestamp; SQLite's CURRENT_TIMESTAMP is UTC without a zone marker. */
+export function parseTimestamp(value: string): Date {
+  // "YYYY-MM-DD HH:MM:SS" would otherwise be parsed as local time.
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(" ", "T")}Z`
+    : value;
+  return new Date(normalized);
+}
+
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = parseTimestamp(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}

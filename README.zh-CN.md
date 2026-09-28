@@ -143,6 +143,8 @@ npm run tauri build
 ```bash
 npm run lint
 npm run typecheck
+npm test
+cd src-tauri && cargo clippy --all-targets -- -D warnings
 cd src-tauri && cargo test
 ```
 

@@ -11,7 +11,9 @@ import type {
 import * as api from "@/lib/api";
 import { useSettingsStore } from "@/stores/settingsStore";
 
-export type SortOption = "downloads" | "likes" | "lastModified";
+import { mergeResults, type SortOption } from "@/lib/search";
+
+export type { SortOption };
 export type SourceFilter = "all" | "huggingface" | "civitai";
 
 interface SearchState {
@@ -112,22 +114,6 @@ function mapHfToUnified(m: HfModelInfo): SearchResultItem {
     thumbnail_url: null,
     hf: m,
   };
-}
-
-/**
- * Merges the per-source result lists (each already ordered by its API).
- * Downloads and likes are comparable across sources; Civitai results carry no
- * modification date, so for "newest" the two lists are interleaved instead.
- */
-function mergeResults(hf: SearchResultItem[], civitai: SearchResultItem[], sort: SortOption): SearchResultItem[] {
-  if (sort === "downloads") return [...hf, ...civitai].sort((a, b) => b.downloads - a.downloads);
-  if (sort === "likes") return [...hf, ...civitai].sort((a, b) => b.likes - a.likes);
-  const merged: SearchResultItem[] = [];
-  for (let i = 0; i < Math.max(hf.length, civitai.length); i++) {
-    if (i < hf.length) merged.push(hf[i]);
-    if (i < civitai.length) merged.push(civitai[i]);
-  }
-  return merged;
 }
 
 function describeFailures(failures: string[]): string | null {

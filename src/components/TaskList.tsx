@@ -56,10 +56,8 @@ export default function TaskList() {
   const maxConcurrent = useSettingsStore((s) => s.settings.aria2_max_concurrent);
 
   const summary = getTaskSummary();
-  const visibleTasks = useMemo(
-    () => getTasksByFilter(filter),
-    [filter, tasks, getTasksByFilter]
-  );
+  // Recomputed on every render: `tasks` is subscribed above, and the filter is cheap.
+  const visibleTasks = getTasksByFilter(filter);
   const activeTasks = tasks.filter(
     (task) => task.status === "queued" || task.status === "downloading"
   );
