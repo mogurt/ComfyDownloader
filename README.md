@@ -126,7 +126,7 @@ You can also right-click the app and choose **Open**.
 # Install dependencies
 npm install
 
-# Re-download aria2c if needed
+# Re-prepare aria2c if needed (delete src-tauri/binaries/aria2c-* first)
 npm run prepare:aria2
 
 # Start Vite + Tauri
@@ -136,7 +136,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-`npm install` automatically downloads the required `aria2c` sidecar into `src-tauri/binaries/` for supported Windows and macOS targets.
+`npm install` automatically prepares the required `aria2c` sidecar in `src-tauri/binaries/` from the pinned official aria2 release: on Windows it downloads the official build, and on macOS it compiles aria2 from source, which needs the Xcode Command Line Tools and takes a few minutes the first time. To use your own binary instead, set `ARIA2C_PATH` before running `npm run prepare:aria2`.
 
 Useful checks:
 

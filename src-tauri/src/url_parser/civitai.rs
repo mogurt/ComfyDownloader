@@ -9,7 +9,10 @@ pub async fn parse(
     proxy: Option<&str>,
     token: Option<&str>,
 ) -> Result<ParseResult, String> {
-    info!("Parsing Civitai URL: {}", raw_url);
+    info!(
+        "Parsing Civitai URL: {}",
+        crate::safety::redact_url(raw_url)
+    );
 
     let mut headers = HeaderMap::new();
     if let Some(t) = token {

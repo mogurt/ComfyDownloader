@@ -126,7 +126,7 @@ xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 # 安装依赖
 npm install
 
-# 如有需要，重新下载 aria2c
+# 如有需要，重新准备 aria2c（需先删除 src-tauri/binaries/aria2c-*）
 npm run prepare:aria2
 
 # 启动 Vite + Tauri
@@ -136,7 +136,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-`npm install` 会自动将对应平台所需的 `aria2c` sidecar 下载到 `src-tauri/binaries/`。目前自动准备仅覆盖 Windows 和 macOS。
+`npm install` 会基于固定版本的 aria2 官方发布，自动在 `src-tauri/binaries/` 下准备所需的 `aria2c` sidecar：Windows 直接下载官方构建；macOS 从官方源码编译，需要先安装 Xcode Command Line Tools，首次约需几分钟。如需使用自己的二进制，可在运行 `npm run prepare:aria2` 前设置 `ARIA2C_PATH`。目前自动准备仅覆盖 Windows 和 macOS。
 
 常用检查命令：
 

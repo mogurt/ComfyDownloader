@@ -10,12 +10,20 @@ on:
         description: "Release tag (e.g. v0.1.0)"
         required: true
         type: string
+  # Called by release-please after it publishes a release: tags created with
+  # GITHUB_TOKEN do not trigger the `push: tags` event above.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -43,6 +51,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

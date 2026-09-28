@@ -38,6 +38,7 @@ import { useSearchStore, type SortOption, type SourceFilter } from "@/stores/sea
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTaskStore } from "@/stores/taskStore";
 import * as api from "@/lib/api";
+import { getModelBaseDir, joinPath } from "@/lib/utils";
 import { extractPath } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -148,9 +149,7 @@ export default function Search({
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const baseDir =
-    settings.model_base_dir ||
-    (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
+  const baseDir = getModelBaseDir(settings);
 
   const handleInputChange = (value: string) => {
     setQuery(value);
@@ -735,9 +734,7 @@ function FileRow({
   const rules = useSettingsStore((s) => s.rules);
   const addLog = useTaskStore((s) => s.addLog);
 
-  const baseDir =
-    settings.model_base_dir ||
-    (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
+  const baseDir = getModelBaseDir(settings);
 
   const handleClick = useCallback(async () => {
     setPreparing(true);
@@ -839,9 +836,7 @@ function DownloadConfirmDialog({
   const startDownload = useTaskStore((s) => s.startDownload);
   const addLog = useTaskStore((s) => s.addLog);
 
-  const baseDir =
-    settings.model_base_dir ||
-    (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
+  const baseDir = getModelBaseDir(settings);
 
   useEffect(() => {
     if (!pending) return;
@@ -852,7 +847,7 @@ function DownloadConfirmDialog({
     setSubSubdirs([]);
 
     if (initial && baseDir) {
-      api.listSubdirs(`${baseDir}\\${initial}`)
+      api.listSubdirs(joinPath(baseDir, initial))
         .then(setSubSubdirs)
         .catch(() => setSubSubdirs([]));
     }
@@ -864,7 +859,7 @@ function DownloadConfirmDialog({
       setSelectedSubSubdir("");
       return;
     }
-    api.listSubdirs(`${baseDir}\\${selectedSubdir}`)
+    api.listSubdirs(joinPath(baseDir, selectedSubdir))
       .then(setSubSubdirs)
       .catch(() => setSubSubdirs([]));
   }, [selectedSubdir, baseDir]);
@@ -880,9 +875,9 @@ function DownloadConfirmDialog({
   const resolvedDir = isManual
     ? manualDir
     : selectedSubSubdir
-      ? `${baseDir}\\${selectedSubdir}\\${selectedSubSubdir}`
+      ? joinPath(baseDir, selectedSubdir, selectedSubSubdir)
       : selectedSubdir
-        ? `${baseDir}\\${selectedSubdir}`
+        ? joinPath(baseDir, selectedSubdir)
         : "";
 
   const handlePickDir = async () => {

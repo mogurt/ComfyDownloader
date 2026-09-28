@@ -21,7 +21,7 @@ import * as api from "@/lib/api";
 import { extractPath } from "@/lib/api";
 import type { ModelType } from "@/lib/types";
 import type { ThemeMode } from "@/lib/theme";
-import { cn } from "@/lib/utils";
+import { cn, getModelBaseDir, joinPath } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 
 const MODEL_TYPES: ModelType[] = [
@@ -121,9 +121,7 @@ export default function Settings() {
     setNewKeyword("");
   };
 
-  const effectiveBaseDir =
-    settings.model_base_dir ||
-    (settings.comfyui_root ? `${settings.comfyui_root}\\models` : "");
+  const effectiveBaseDir = getModelBaseDir(settings);
 
   useEffect(() => {
     if (effectiveBaseDir) {
@@ -135,7 +133,7 @@ export default function Settings() {
 
   const handleApplyDerivedBaseDir = async () => {
     if (settings.comfyui_root) {
-      await updateSetting("model_base_dir", `${settings.comfyui_root}\\models`);
+      await updateSetting("model_base_dir", joinPath(settings.comfyui_root, "models"));
     }
   };
 
@@ -371,7 +369,7 @@ export default function Settings() {
                     className="w-96"
                     placeholder={
                       settings.comfyui_root
-                        ? `Auto: ${settings.comfyui_root}\\models`
+                        ? `Auto: ${joinPath(settings.comfyui_root, "models")}`
                         : t("settings.placeholder.modelBase")
                     }
                   />
@@ -383,7 +381,7 @@ export default function Settings() {
               {!settings.model_base_dir && settings.comfyui_root && (
                 <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
                   <span>
-                    {t("settings.autoDetectedBaseDir", { path: `${settings.comfyui_root}\\models` })}
+                    {t("settings.autoDetectedBaseDir", { path: joinPath(settings.comfyui_root, "models") })}
                   </span>
                   <Button variant="outline" size="sm" onClick={handleApplyDerivedBaseDir}>
                     {t("common.apply")}

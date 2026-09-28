@@ -2,15 +2,17 @@ mod aria2;
 mod commands;
 mod db;
 mod model_type;
+mod safety;
 mod url_parser;
 
 use aria2::process::{find_available_port, resolve_aria2_path, Aria2Process};
 use aria2::rpc::Aria2Rpc;
 use commands::download::Aria2RpcState;
 use db::migrations::get_migrations;
-use log::{error, info};
+use log::{error, info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{Emitter, Manager, RunEvent};
 use tokio::sync::Mutex;
 
@@ -90,7 +92,8 @@ pub fn run() {
                     rpc
                 };
                 if let Some(rpc) = rpc {
-                    let _ = rpc.shutdown().await;
+                    // Never let a hung aria2 block app exit.
+                    let _ = tokio::time::timeout(Duration::from_secs(2), rpc.shutdown()).await;
                 }
 
                 let process_state: tauri::State<'_, Aria2ProcessState> = app_handle.state();
@@ -108,40 +111,80 @@ pub fn run() {
     });
 }
 
+const STARTUP_ATTEMPTS: u32 = 3;
+const CONNECT_ATTEMPTS: u32 = 20;
+
+/// aria2 needs a moment (longer on first launch / under AV scanning) before
+/// its RPC port accepts connections.
+async fn connect_with_retry(rpc: &Aria2Rpc, app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let mut last_error = String::new();
+    for _ in 0..CONNECT_ATTEMPTS {
+        match rpc.connect(app_handle.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(e) => last_error = e,
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    Err(last_error)
+}
+
 async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
     let shutdown_state: tauri::State<'_, Aria2ShutdownState> = app_handle.state();
     shutdown_state.store(false, Ordering::SeqCst);
 
     let aria2_path = resolve_aria2_path(&app_handle)?;
-    let port = find_available_port();
-    let secret: String = uuid::Uuid::new_v4().to_string().replace("-", "");
 
-    info!(
-        "Setting up aria2: path={}, port={}",
-        aria2_path.display(),
-        port
-    );
+    // The port is picked before aria2 binds it, so another process can grab it
+    // in between; retry with a fresh port if startup fails.
+    let mut last_error = String::new();
+    let mut started = None;
+    for attempt in 1..=STARTUP_ATTEMPTS {
+        let port = find_available_port();
+        let secret: String = uuid::Uuid::new_v4().to_string().replace("-", "");
+        info!(
+            "Setting up aria2 (attempt {}): path={}, port={}",
+            attempt,
+            aria2_path.display(),
+            port
+        );
 
-    let process = Arc::new(Aria2Process::new(
-        aria2_path,
-        port,
-        secret.clone(),
-        3,
-        16,
-        None,
-    ));
-    process.start(&app_handle).await?;
+        let process = Arc::new(Aria2Process::new(
+            aria2_path.clone(),
+            port,
+            secret.clone(),
+            3,
+            16,
+            None,
+        ));
+        if let Err(e) = process.start(&app_handle).await {
+            warn!("aria2 start failed: {}", e);
+            last_error = e;
+            continue;
+        }
+
+        let rpc = Aria2Rpc::new(port, secret);
+        match connect_with_retry(&rpc, &app_handle).await {
+            Ok(()) => {
+                started = Some((process, rpc, port));
+                break;
+            }
+            Err(e) => {
+                warn!("aria2 RPC connect failed: {}", e);
+                let _ = process.stop().await;
+                last_error = e;
+            }
+        }
+    }
+    let Some((process, rpc, port)) = started else {
+        let _ = app_handle.emit("aria2://error", serde_json::json!({ "error": last_error }));
+        return Err(last_error);
+    };
 
     let process_state: tauri::State<'_, Aria2ProcessState> = app_handle.state();
     {
         let mut guard = process_state.lock().await;
         *guard = Some(process.clone());
     }
-
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-    let rpc = Aria2Rpc::new(port, secret);
-    rpc.connect(app_handle.clone()).await?;
 
     let rpc_state: tauri::State<'_, Aria2RpcState> = app_handle.state();
     let mut guard = rpc_state.lock().await;
@@ -159,10 +202,27 @@ async fn setup_aria2(app_handle: tauri::AppHandle) -> Result<(), String> {
                 info!("aria2 monitor stopping because app is shutting down");
                 break;
             }
-            if let Err(e) = process.ensure_running(&app_for_monitor).await {
-                error!("aria2 monitor error: {}", e);
-                let _ = app_for_monitor.emit("aria2://error", serde_json::json!({ "error": e }));
-                break;
+            match process.ensure_running(&app_for_monitor).await {
+                Ok(false) => {}
+                Ok(true) => {
+                    // Downloads that were running are gone; the frontend
+                    // re-syncs settings and reconciles tasks on `ready`.
+                    let rpc_state: tauri::State<'_, Aria2RpcState> = app_for_monitor.state();
+                    let rpc = rpc_state.lock().await.clone();
+                    if let Some(rpc) = rpc {
+                        if let Err(e) = connect_with_retry(&rpc, &app_for_monitor).await {
+                            warn!("aria2 RPC reconnect after restart failed: {}", e);
+                        }
+                    }
+                    let _ =
+                        app_for_monitor.emit("aria2://ready", serde_json::json!({ "port": port }));
+                }
+                Err(e) => {
+                    error!("aria2 monitor error: {}", e);
+                    let _ =
+                        app_for_monitor.emit("aria2://error", serde_json::json!({ "error": e }));
+                    break;
+                }
             }
         }
     });
