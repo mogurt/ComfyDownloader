@@ -12,7 +12,7 @@ pub async fn parse(raw_url: &str, proxy: Option<&str>) -> Result<ParseResult, St
 
     let filename = url
         .path_segments()
-        .and_then(|s| s.last())
+        .and_then(|mut s| s.next_back())
         .filter(|s| !s.is_empty() && s.contains('.'))
         .map(|s| urlencoding::decode(s).unwrap_or(s.into()).to_string())
         .unwrap_or_else(|| fetch_filename_fallback(raw_url));

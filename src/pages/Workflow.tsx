@@ -3,7 +3,7 @@ import { useI18n } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import * as api from "@/lib/api";
-import { getModelBaseDir } from "@/lib/utils";
+import { cleanFilenameForSearch, getModelBaseDir } from "@/lib/utils";
 import type {
   WorkflowModelRef,
   ModelLocalStatus,
@@ -262,14 +262,6 @@ export default function Workflow({
     setPasteText("");
   };
 
-  const cleanFilenameForSearch = (filename: string): string => {
-    let name = filename.replace(/\.[^.]+$/, "");
-    name = name.replace(/[_\-]/g, " ");
-    name = name.replace(/_v\d+(\.\d+)?$/i, "");
-    name = name.replace(/\s+/g, " ").trim();
-    return name;
-  };
-
   const handleSearchModel = (filename: string) => {
     const query = cleanFilenameForSearch(filename);
     onNavigateToSearch(query, filename);
@@ -508,7 +500,7 @@ export default function Workflow({
                 {analysis.models.length === 0 && (
                   <div className="flex flex-col items-center py-8 text-muted-foreground">
                     <Package className="h-8 w-8 mb-2 opacity-50" />
-                    <p className="text-sm">No model dependencies found in this workflow.</p>
+                    <p className="text-sm">{t("workflow.noModelDeps")}</p>
                   </div>
                 )}
               </>

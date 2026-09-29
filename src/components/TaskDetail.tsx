@@ -12,6 +12,7 @@ import { FolderOpen, Link2, Logs, Timer, Zap } from "lucide-react";
 import { useTaskStore } from "@/stores/taskStore";
 import * as api from "@/lib/api";
 import {
+  formatDateTime,
   formatEta,
   formatSize,
   formatSpeed,
@@ -24,16 +25,6 @@ import {
   getTaskVisualProgress,
 } from "@/lib/task-status";
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "-";
-  // SQLite CURRENT_TIMESTAMP is UTC without a zone marker ("YYYY-MM-DD HH:MM:SS");
-  // without the "Z" it would be parsed as local time.
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-    ? `${value.replace(" ", "T")}Z`
-    : value;
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
 
 export default function TaskDetail() {
   const { t } = useI18n();

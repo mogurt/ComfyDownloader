@@ -38,10 +38,7 @@ fn is_model_filename(s: &str) -> bool {
 }
 
 fn extract_basename(filename: &str) -> &str {
-    filename
-        .rsplit(|c| c == '/' || c == '\\')
-        .next()
-        .unwrap_or(filename)
+    filename.rsplit(['/', '\\']).next().unwrap_or(filename)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,8 +144,7 @@ fn detect_and_extract(root: &serde_json::Value) -> (Vec<WorkflowModelRef>, usize
         (models, count, "litegraph".to_string())
     } else {
         let obj = root.as_object();
-        let looks_like_api =
-            obj.map_or(false, |o| o.values().any(|v| v.get("class_type").is_some()));
+        let looks_like_api = obj.is_some_and(|o| o.values().any(|v| v.get("class_type").is_some()));
 
         if looks_like_api {
             let (models, count) = extract_models_api_format(root);

@@ -101,9 +101,16 @@ jobs:
       - name: Type-check and build frontend
         run: npm run build
 
+      - name: Run frontend tests
+        run: npm test
+
       - name: Check Rust formatting
         working-directory: src-tauri
         run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run Rust tests
         working-directory: src-tauri

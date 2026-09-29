@@ -18,7 +18,7 @@ pub fn suggest_model_type(
     user_rules: &[UserRule],
 ) -> String {
     let mut sorted_rules: Vec<&UserRule> = user_rules.iter().filter(|r| r.enabled).collect();
-    sorted_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+    sorted_rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
 
     for rule in &sorted_rules {
         let haystack = match rule.rule_type.as_str() {

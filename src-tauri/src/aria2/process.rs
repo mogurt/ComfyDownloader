@@ -260,7 +260,7 @@ pub fn resolve_aria2_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, Stri
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let dev_candidates = [
             manifest_dir.join("binaries").join(&sidecar_name),
-            manifest_dir.join("binaries").join(&exe_name),
+            manifest_dir.join("binaries").join(exe_name),
         ];
         for path in dev_candidates {
             if path.exists() {

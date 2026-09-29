@@ -22,7 +22,7 @@ import { extractPath } from "@/lib/api";
 import type { ModelType } from "@/lib/types";
 import type { ThemeMode } from "@/lib/theme";
 import { cn, getModelBaseDir, joinPath } from "@/lib/utils";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 const MODEL_TYPES: ModelType[] = [
   "checkpoint", "diffusion_model", "lora", "vae", "embedding",
@@ -31,28 +31,13 @@ const MODEL_TYPES: ModelType[] = [
 
 const THEME_OPTIONS: Array<{
   value: ThemeMode;
-  label: string;
-  description: string;
+  labelKey: TranslationKey;
+  descriptionKey: TranslationKey;
   icon: typeof Sun;
 }> = [
-  {
-    value: "light",
-    label: "Light",
-    description: "Bright neutral surfaces with softer blue accents.",
-    icon: Sun,
-  },
-  {
-    value: "dark",
-    label: "Dark",
-    description: "Deeper slate surfaces with calmer contrast and vivid highlights.",
-    icon: Moon,
-  },
-  {
-    value: "system",
-    label: "System",
-    description: "Follow your OS appearance automatically.",
-    icon: Laptop,
-  },
+  { value: "light", labelKey: "settings.themeLight", descriptionKey: "settings.themeLightDesc", icon: Sun },
+  { value: "dark", labelKey: "settings.themeDark", descriptionKey: "settings.themeDarkDesc", icon: Moon },
+  { value: "system", labelKey: "settings.themeSystem", descriptionKey: "settings.themeSystemDesc", icon: Laptop },
 ];
 
 export default function Settings() {
@@ -80,7 +65,7 @@ export default function Settings() {
       const result = await api.checkComfyuiStatus(settings.comfyui_server);
       setComfyStatus(result.message);
     } catch (e) {
-      setComfyStatus(`Error: ${e}`);
+      setComfyStatus(`${t("common.error")}: ${e}`);
     }
     setChecking(false);
   };
@@ -155,16 +140,8 @@ export default function Settings() {
                   {THEME_OPTIONS.map((option) => {
                     const Icon = option.icon;
                     const active = settings.theme === option.value;
-                    const optionLabel = option.value === "light"
-                      ? t("settings.themeLight")
-                      : option.value === "dark"
-                        ? t("settings.themeDark")
-                        : t("settings.themeSystem");
-                    const optionDescription = option.value === "light"
-                      ? t("settings.themeLightDesc")
-                      : option.value === "dark"
-                        ? t("settings.themeDarkDesc")
-                        : t("settings.themeSystemDesc");
+                    const optionLabel = t(option.labelKey);
+                    const optionDescription = t(option.descriptionKey);
                     return (
                       <button
                         key={option.value}
@@ -368,7 +345,7 @@ export default function Settings() {
                     className="w-96"
                     placeholder={
                       settings.comfyui_root
-                        ? `Auto: ${joinPath(settings.comfyui_root, "models")}`
+                        ? t("settings.placeholder.autoModelBase", { path: joinPath(settings.comfyui_root, "models") })
                         : t("settings.placeholder.modelBase")
                     }
                   />
