@@ -113,6 +113,8 @@ jobs:
             >
             > `xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app`
             >
+            > If that fails with "Operation not permitted", enable Terminal under System Settings -> Privacy & Security -> App Management, restart Terminal and run it again.
+            >
             > A `SHA256SUMS.txt` file is attached to this release so you can verify the downloaded artifacts.
           releaseDraft: true
           prerelease: false

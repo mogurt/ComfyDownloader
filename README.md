@@ -100,7 +100,9 @@ xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 
 3. Open the app again
 
-You can also right-click the app and choose **Open**.
+If `xattr` fails with _"Operation not permitted"_, macOS (13 and later) is blocking Terminal from modifying apps in `Applications`. Enable Terminal under **System Settings -> Privacy & Security -> App Management**, restart Terminal, and run the command again.
+
+If the warning says Apple cannot verify or check the app (rather than calling it damaged), you can skip Terminal: try to open the app once, then click **Open Anyway** under **System Settings -> Privacy & Security**.
 
 **Windows** - If SmartScreen shows _"Windows protected your PC"_, click **More info** -> **Run anyway**.
 
