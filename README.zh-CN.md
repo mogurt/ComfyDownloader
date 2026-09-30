@@ -100,7 +100,9 @@ xattr -dr com.apple.quarantine /Applications/ComfyDownloader.app
 
 3. 再次打开应用
 
-也可以右键应用并选择 **Open**。
+如果 `xattr` 报错 _"Operation not permitted"_，说明 macOS（13 及以上）禁止终端修改“应用程序”中的 App。请在 **系统设置 -> 隐私与安全性 -> App 管理** 中为“终端”开启权限，重启终端后再运行一次上面的命令。
+
+如果提示是 Apple 无法验证或检查该 App（而不是提示“已损坏”），也可以不用终端：先尝试打开一次应用，然后在 **系统设置 -> 隐私与安全性** 中点击 **仍要打开**。
 
 **Windows** - 如果 SmartScreen 提示 _"Windows protected your PC"_，点击 **More info** -> **Run anyway**。
 
