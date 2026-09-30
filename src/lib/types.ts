@@ -11,6 +11,8 @@ export type ModelType =
   | "custom";
 
 export interface ParseResult {
+  /** URL to hand to aria2; page links (HF `/blob/`, Civitai model pages) are resolved to the file. */
+  download_url: string;
   filename: string;
   source: string;
   suggested_type: string | null;

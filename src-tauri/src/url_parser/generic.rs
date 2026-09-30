@@ -19,9 +19,16 @@ pub async fn parse(raw_url: &str, proxy: Option<&str>) -> Result<ParseResult, St
 
     let suggested_type = guess_type(&filename);
 
-    let file_size = fetch_content_length(raw_url, proxy).await.ok();
+    let (file_size, content_type) = probe(raw_url, proxy).await.unwrap_or((None, None));
+    if content_type.is_some_and(|ct| ct.to_ascii_lowercase().starts_with("text/html")) {
+        return Err(
+            "This link opens a web page, not a file. Copy the direct download link instead."
+                .to_string(),
+        );
+    }
 
     Ok(ParseResult {
+        download_url: raw_url.to_string(),
         filename,
         source: "generic".to_string(),
         suggested_type,
@@ -64,7 +71,8 @@ fn guess_type(filename: &str) -> Option<String> {
     }
 }
 
-async fn fetch_content_length(url: &str, proxy: Option<&str>) -> Result<u64, String> {
+/// HEAD request: returns (content length, content type).
+async fn probe(url: &str, proxy: Option<&str>) -> Result<(Option<u64>, Option<String>), String> {
     let mut builder = reqwest::Client::builder();
     if let Some(p) = proxy {
         if !p.is_empty() {
@@ -82,9 +90,14 @@ async fn fetch_content_length(url: &str, proxy: Option<&str>) -> Result<u64, Str
         .await
         .map_err(|e| format!("HEAD request failed: {}", e))?;
 
-    resp.headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok())
-        .ok_or_else(|| "No content-length header".to_string())
+    let header = |name| {
+        resp.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    Ok((
+        header(reqwest::header::CONTENT_LENGTH).and_then(|v| v.parse::<u64>().ok()),
+        header(reqwest::header::CONTENT_TYPE),
+    ))
 }
