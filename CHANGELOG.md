@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/mogurt/ComfyDownloader/compare/v0.1.2...v0.1.3) (2026-09-30)
+
+
+### Bug Fixes
+
+* download the file, not the page, for HF blob and Civitai page links ([#16](https://github.com/mogurt/ComfyDownloader/issues/16)) ([19554db](https://github.com/mogurt/ComfyDownloader/commit/19554db4e787ac29f0c39dfe3481787943e1163b))
+
 ## [0.1.2](https://github.com/mogurt/ComfyDownloader/compare/v0.1.1...v0.1.2) (2026-09-29)
 
 
