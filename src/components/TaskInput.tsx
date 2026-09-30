@@ -36,6 +36,8 @@ export default function TaskInput() {
   const [parsing, setParsing] = useState(false);
   const [recommendation, setRecommendation] = useState("");
   const [parsedUrl, setParsedUrl] = useState("");
+  // The file URL the parser resolved for `parsedUrl` (may differ for page links).
+  const [downloadUrl, setDownloadUrl] = useState("");
 
   const [subdirs, setSubdirs] = useState<string[]>([]);
   const [selectedSubdir, setSelectedSubdir] = useState<string>("");
@@ -108,6 +110,7 @@ export default function TaskInput() {
       if (isStale()) return;
       setFilename(result.filename);
       setParsedUrl(trimmed);
+      setDownloadUrl(result.download_url);
       parsedUrlRef.current = trimmed;
 
       const rulesJson = JSON.stringify(rules);
@@ -150,6 +153,7 @@ export default function TaskInput() {
     if (value.trim() !== parsedUrl) {
       // Never let a new URL inherit the previous URL's filename / folder.
       setParsedUrl("");
+      setDownloadUrl("");
       parsedUrlRef.current = "";
       setFilename("");
       setRecommendation("");
@@ -226,7 +230,7 @@ export default function TaskInput() {
       addLog("warn", translate("taskInput.log.fileExistsSkipping", { filename: requestedName }));
       await addTask({
         gid: "",
-        url: url.trim(),
+        url: downloadUrl || url.trim(),
         filename: requestedName,
         source: recommendation.split(" -> ")[0] || "unknown",
         model_type: isManual ? "custom" : selectedSubdir,
@@ -251,7 +255,7 @@ export default function TaskInput() {
 
     const taskId = await addTask({
       gid: "",
-      url: url.trim(),
+      url: downloadUrl || url.trim(),
       filename: finalName,
       source: recommendation.split(" -> ")[0] || "unknown",
       model_type: isManual ? "custom" : selectedSubdir,
@@ -280,6 +284,7 @@ export default function TaskInput() {
     setSelectedSubSubdir("");
     setRecommendation("");
     setParsedUrl("");
+    setDownloadUrl("");
     latestUrlRef.current = "";
     parsedUrlRef.current = "";
     autoSubdirRef.current = "";

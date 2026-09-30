@@ -13,22 +13,55 @@ pub async fn parse(
         crate::safety::redact_url(raw_url)
     );
 
-    let url = Url::parse(raw_url).map_err(|e| format!("Invalid URL: {}", e))?;
+    // `/blob/` (and `/raw/`) links open the file viewer page (or the LFS
+    // pointer), not the file itself; `/resolve/` serves the actual file.
+    let download_url = to_resolve_url(raw_url);
+    let url = Url::parse(&download_url).map_err(|e| format!("Invalid URL: {}", e))?;
     let path = url.path();
+    if !path.contains("/resolve/") {
+        return Err(
+            "This Hugging Face link points to a page, not a file. Open the file in the repo's \
+             \"Files\" tab and copy its download link."
+                .to_string(),
+        );
+    }
 
     let filename = extract_filename_from_path(path).unwrap_or_else(|| extract_last_segment(path));
 
     let suggested_type = guess_type(&filename, path);
 
-    let file_size = fetch_content_length(raw_url, proxy, token).await.ok();
+    let file_size = fetch_content_length(&download_url, proxy, token).await.ok();
 
     Ok(ParseResult {
+        download_url,
         filename,
         source: "huggingface".to_string(),
         suggested_type,
         file_size,
         hash: None,
     })
+}
+
+/// Rewrites `…/{repo}/blob/{rev}/{file}` and `…/raw/…` to `…/resolve/…`.
+/// The marker must come after at least `{owner}/{repo}` (or `datasets/{owner}/{repo}`).
+fn to_resolve_url(raw_url: &str) -> String {
+    let Ok(mut url) = Url::parse(raw_url) else {
+        return raw_url.to_string();
+    };
+    let Some(mut segments) = url
+        .path_segments()
+        .map(|s| s.map(str::to_string).collect::<Vec<_>>())
+    else {
+        return raw_url.to_string();
+    };
+    match segments.iter().position(|s| s == "blob" || s == "raw") {
+        Some(i) if i >= 2 => {
+            segments[i] = "resolve".to_string();
+            url.set_path(&segments.join("/"));
+            url.to_string()
+        }
+        _ => raw_url.to_string(),
+    }
 }
 
 fn extract_filename_from_path(path: &str) -> Option<String> {
@@ -124,7 +157,31 @@ async fn fetch_content_length(
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_filename_from_path, guess_type};
+    use super::{extract_filename_from_path, guess_type, to_resolve_url};
+
+    #[test]
+    fn rewrites_page_links_to_resolve_links() {
+        assert_eq!(
+            to_resolve_url("https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/text_encoders/a.int8_convrot.safetensors"),
+            "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/a.int8_convrot.safetensors"
+        );
+        assert_eq!(
+            to_resolve_url("https://huggingface.co/org/repo/raw/main/model.safetensors"),
+            "https://huggingface.co/org/repo/resolve/main/model.safetensors"
+        );
+        assert_eq!(
+            to_resolve_url("https://hf-mirror.com/datasets/org/repo/blob/v1/data.bin"),
+            "https://hf-mirror.com/datasets/org/repo/resolve/v1/data.bin"
+        );
+        // Already a file link, or a repo literally named "blob": unchanged.
+        let resolve =
+            "https://huggingface.co/org/repo/resolve/main/model.safetensors?download=true";
+        assert_eq!(to_resolve_url(resolve), resolve);
+        assert_eq!(
+            to_resolve_url("https://huggingface.co/org/blob/resolve/main/x.bin"),
+            "https://huggingface.co/org/blob/resolve/main/x.bin"
+        );
+    }
 
     #[test]
     fn extracts_filenames_from_resolve_paths() {

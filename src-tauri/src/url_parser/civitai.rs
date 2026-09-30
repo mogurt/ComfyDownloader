@@ -28,7 +28,27 @@ pub async fn parse(
 
     let client = build_client(proxy, &headers)?;
 
-    let version_id = extract_version_id(raw_url);
+    let mut version_id = extract_version_id(raw_url);
+    // A model page without ?modelVersionId: use the model's latest version.
+    if version_id.is_none() {
+        if let Some(model_id) = extract_model_id(raw_url) {
+            version_id = fetch_latest_version_id(&client, &model_id, token)
+                .await
+                .ok();
+        }
+    }
+    // Model pages serve HTML; only /api/download/models/{version} is the file.
+    let download_url = if raw_url.contains("/api/download/models/") {
+        raw_url.to_string()
+    } else if let Some(vid) = &version_id {
+        format!("https://civitai.com/api/download/models/{}", vid)
+    } else {
+        return Err(
+            "This Civitai link has no downloadable model version. Open the model page and copy \
+             the Download link."
+                .to_string(),
+        );
+    };
 
     let mut filename = String::new();
     let mut suggested_type = None;
@@ -68,7 +88,7 @@ pub async fn parse(
     }
 
     if filename.is_empty() {
-        filename = fetch_filename_from_head(&client, raw_url, token).await?;
+        filename = fetch_filename_from_head(&client, &download_url, token).await?;
     }
 
     if suggested_type.is_none() {
@@ -76,6 +96,7 @@ pub async fn parse(
     }
 
     Ok(ParseResult {
+        download_url,
         filename,
         source: "civitai".to_string(),
         suggested_type,
@@ -90,6 +111,42 @@ fn extract_version_id(url: &str) -> Option<String> {
         let re2 = Regex::new(r"modelVersionId=(\d+)").ok()?;
         re2.captures(url).map(|c| c[1].to_string())
     })
+}
+
+/// Model id from a model page link like `civitai.com/models/7808/easynegative`.
+fn extract_model_id(url: &str) -> Option<String> {
+    let re = Regex::new(r"civitai\.com/models/(\d+)").ok()?;
+    re.captures(url).map(|c| c[1].to_string())
+}
+
+async fn fetch_latest_version_id(
+    client: &reqwest::Client,
+    model_id: &str,
+    token: Option<&str>,
+) -> Result<String, String> {
+    let mut req = client.get(format!("https://civitai.com/api/v1/models/{}", model_id));
+    if let Some(t) = token.filter(|t| !t.is_empty()) {
+        req = req.header(AUTHORIZATION, format!("Bearer {}", t));
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Civitai model: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Civitai model returned {}", resp.status()));
+    }
+    let model: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Civitai model: {}", e))?;
+    model
+        .get("modelVersions")
+        .and_then(|v| v.as_array())
+        .and_then(|versions| versions.first())
+        .and_then(|v| v.get("id"))
+        .and_then(|id| id.as_u64())
+        .map(|id| id.to_string())
+        .ok_or_else(|| "Civitai model has no versions".to_string())
 }
 
 async fn fetch_version_metadata(
@@ -230,9 +287,21 @@ fn build_client(proxy: Option<&str>, _headers: &HeaderMap) -> Result<reqwest::Cl
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_filename_from_content_disposition, extract_version_id, guess_type_from_filename,
-        map_civitai_type,
+        extract_filename_from_content_disposition, extract_model_id, extract_version_id,
+        guess_type_from_filename, map_civitai_type,
     };
+
+    #[test]
+    fn extracts_model_id_from_model_pages_only() {
+        assert_eq!(
+            extract_model_id("https://civitai.com/models/7808/easynegative?modelVersionId=9208"),
+            Some("7808".to_string())
+        );
+        assert_eq!(
+            extract_model_id("https://civitai.com/api/download/models/9208"),
+            None
+        );
+    }
 
     #[test]
     fn extracts_version_id_from_supported_urls() {

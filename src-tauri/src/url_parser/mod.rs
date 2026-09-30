@@ -8,6 +8,9 @@ use url::Url;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseResult {
+    /// What should actually be downloaded. Differs from the pasted URL for
+    /// page links (HF `/blob/`, Civitai model pages) that serve HTML.
+    pub download_url: String,
     pub filename: String,
     pub source: String,
     pub suggested_type: Option<String>,
